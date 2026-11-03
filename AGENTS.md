@@ -11,6 +11,8 @@
 - `mise run lint` — golangci-lint (Go) + eslint (фронтенд), обе части обязательны к зелёному
 - `mise run test` — gotestsum; один тест: `mise x -- go test ./tests/smoke/ -v -run TestAppStartup`
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
+- `mise run build` — прод-бинарь целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`)
+- `mise run test-junit` / `frontend-test-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
 - `mise run generate` — задел под OpenAPI; упадёт, пока нет `api/openapi.yaml` + `api/oapi-codegen.yaml`
 
 ## Конвенции
@@ -44,7 +46,9 @@
 - Скаффолды shadcn создают вложенный `.git` в рабочей директории — удалять сразу
 - `shadcn mcp init ...` делает `npm install` в текущей папке (мусор в корне) — уже чистили один раз
 - CLI shadcn 4.x: шаблон называется `-t vite` (не react); `-b/--base` — библиотека примитивов (radix), не цвет; неинтерактивно: `-t vite --base radix -p <пресет> -n <имя> --no-monorepo` (stdin-промпты не читает)
-- CI/деплой пока не настроены (отложено). Запланировано: `go:embed` фронта в бинарь, GitHub Actions через `jdx/mise-action` + junit-отчёты (`GOTESTSUM_JUNITFILE`, vitest `--reporter=junit`), systemd на VPS — не предполагать, что это уже есть
+- `internal/web/dist/index.html` — закоммиченный placeholder: без него `go:embed all:dist` не собирается на свежем чекауте. После `mise run build` этот файл заменяется реальным index из билда и висит «грязным» в git — это ожидаемо; не коммитить его попутно с фичами (вернуть: `git checkout -- internal/web/dist/index.html`)
+- CI: junit-задачи дублируют обычные test/frontend-test с отчётами; если меняете состав `check`, mirrors в `.github/workflows/ci.yml` (lint + junit-варианты + upload-artifact)
+- CI/деплой: go:embed и junit уже есть; деплоя по тегам и systemd на VPS по-прежнему нет — не предполагать, что это уже работает
 
 ## Agent skills
 
@@ -59,3 +63,9 @@ Default five triage labels, label string equals role name. See `docs/agents/tria
 ### Domain docs
 
 Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Skill flow discipline
+
+- Гриллинг (`/grill-with-docs`) заканчивается подтверждением общего понимания — и это **стоп-точка**. Подтверждение понимания ≠ команда на реализацию.
+- После гриллинга агент предлагает пользователю ветку: `/to-spec` → `/to-tickets` (многосессионная работа) или `/implement` (помещается в одну сессию). Выбор делает пользователь.
+- Реализация — только по явной команде пользователя (`/implement`, `/implement-spec`). Не продолжать писать код «в том же окне» в обход скилла: гейт `disable-model-invocation` защищает вход в скилл, и его обходят вызовом скилла, а не игнорированием.
