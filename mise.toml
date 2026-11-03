@@ -1,0 +1,46 @@
+[tools]
+go = "1.26.8"
+node = "24.22.2"
+pnpm = "12.16.1"
+golangci-lint = "2.15.0"
+oapi-codegen = "2.8.1"
+gotestsum = "1.13.0"
+"go:github.com/fe3dback/go-arch-lint" = "1.19.1"
+
+[tasks.dev]
+depends = ["run", "frontend-dev"]
+run = "echo 'бэк: http://localhost:8080/health — фронт: http://localhost:5173'"
+
+[tasks.check]
+run = ["mise run lint", "mise run test", "mise run frontend-test"]
+
+[tasks.build]
+run = "go build ./..."
+
+[tasks.run]
+run = "go run ./cmd/server"
+
+[tasks.test]
+run = "gotestsum ./..."
+
+[tasks.frontend-test]
+dir = "frontend"
+run = "pnpm test"
+
+[tasks.lint]
+run = ["golangci-lint run", "pnpm --dir frontend lint"]
+
+[tasks.generate]
+run = "oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml"
+
+[tasks.frontend-install]
+dir = "frontend"
+run = "pnpm install"
+
+[tasks.frontend-dev]
+dir = "frontend"
+run = "pnpm dev"
+
+[tasks.frontend-build]
+dir = "frontend"
+run = "pnpm build"
