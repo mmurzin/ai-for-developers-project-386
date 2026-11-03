@@ -16,7 +16,11 @@ run = "echo 'бэк: http://localhost:8080/health — фронт: http://localho
 run = ["mise run lint", "mise run test", "mise run frontend-test"]
 
 [tasks.build]
-run = "go build ./..."
+run = [
+  "mise run frontend-build",
+  "rm -rf internal/web/dist && cp -R frontend/dist internal/web/dist",
+  "go build ./...",
+]
 
 [tasks.run]
 run = "go run ./cmd/server"
