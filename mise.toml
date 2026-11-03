@@ -28,9 +28,16 @@ run = "go run ./cmd/server"
 [tasks.test]
 run = "gotestsum ./..."
 
+[tasks.test-junit]
+run = "mkdir -p reports && GOTESTSUM_JUNITFILE=reports/junit-go.xml gotestsum ./..."
+
 [tasks.frontend-test]
 dir = "frontend"
 run = "pnpm test"
+
+[tasks.frontend-test-junit]
+dir = "frontend"
+run = "pnpm run test:junit"
 
 [tasks.lint]
 run = ["golangci-lint run", "pnpm --dir frontend lint"]

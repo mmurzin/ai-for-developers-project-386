@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:junit": "mkdir -p ../reports && vitest run --reporter=default --reporter=junit --outputFile=../reports/junit-frontend.xml",
     "preview": "vite preview"
   },
   "dependencies": {
