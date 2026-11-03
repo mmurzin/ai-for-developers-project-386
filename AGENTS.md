@@ -7,6 +7,7 @@
 Все инструменты (go 1.26, node 24, pnpm, golangci-lint, gotestsum, oapi-codegen, go-arch-lint) закреплены в `mise.toml`. Запуск задач — только `mise run <задача>` (`mise tasks` — список). Если голые `go`/`pnpm` недоступны — нет активации mise (`eval "$(mise activate zsh)"`); системный node — старый (18), не использовать.
 
 - `mise run dev` — бэкенд + фронтенд параллельно; бэкенд `:8080` (переопределение через `PORT`, healthcheck `/health`), фронт `:5173` (`strictPort`), dev-прокси `/api` → `:8080`
+- `mise run check` — полный прогон проверок одной командой: lint + тесты Go + тесты фронта
 - `mise run lint` — golangci-lint (Go) + eslint (фронтенд), обе части обязательны к зелёному
 - `mise run test` — gotestsum; один тест: `mise x -- go test ./tests/smoke/ -v -run TestAppStartup`
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
