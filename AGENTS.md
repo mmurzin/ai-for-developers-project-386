@@ -14,6 +14,7 @@
 - `mise run build` — прод-бинарь целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`)
 - `mise run test-junit` / `frontend-test-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
 - `mise run generate` — задел под OpenAPI; упадёт, пока нет `api/openapi.yaml` + `api/oapi-codegen.yaml`
+- Git-хуки: один раз на клон `git config core.hooksPath .githooks` — pre-commit ловит gofmt и билд-артефакт вместо placeholder в `internal/web/dist/index.html`
 
 ## Конвенции
 
@@ -26,7 +27,7 @@
 
 Формат Conventional Commits 1.0.0: `<type>(<scope>): <описание>` — описание на английском, повелительное наклонение.
 
-- Типы: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`; scope — часть системы (`server`, `frontend`, `api`, `tools`)
+- Типы: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`; scope — часть системы (`server`, `frontend`, `api`, `tools`, `agents`)
 - `feat` → minor, `fix` → patch; breaking changes — `!` после типа или футер `BREAKING CHANGE: ...`
 - Будущий деплой по тегам `v*` будет опираться на историю коммитов (semver)
 
@@ -46,6 +47,7 @@
 - Скаффолды shadcn создают вложенный `.git` в рабочей директории — удалять сразу
 - `shadcn mcp init ...` делает `npm install` в текущей папке (мусор в корне) — уже чистили один раз
 - CLI shadcn 4.x: шаблон называется `-t vite` (не react); `-b/--base` — библиотека примитивов (radix), не цвет; неинтерактивно: `-t vite --base radix -p <пресет> -n <имя> --no-monorepo` (stdin-промпты не читает)
+- pnpm 12 протаскивает `--` в скрипт: `pnpm run x -- --flag` не доезжает до утилиты — флаги оформлять отдельным полем в `scripts` (пример: `test:junit`)
 - `internal/web/dist/index.html` — закоммиченный placeholder: без него `go:embed all:dist` не собирается на свежем чекауте. После `mise run build` этот файл заменяется реальным index из билда и висит «грязным» в git — это ожидаемо; не коммитить его попутно с фичами (вернуть: `git checkout -- internal/web/dist/index.html`)
 - CI: junit-задачи дублируют обычные test/frontend-test с отчётами; если меняете состав `check`, mirrors в `.github/workflows/ci.yml` (lint + junit-варианты + upload-artifact)
 - CI/деплой: go:embed и junit уже есть; деплоя по тегам и systemd на VPS по-прежнему нет — не предполагать, что это уже работает
