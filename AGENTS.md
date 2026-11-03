@@ -44,3 +44,17 @@
 - `shadcn mcp init ...` делает `npm install` в текущей папке (мусор в корне) — уже чистили один раз
 - CLI shadcn 4.x: шаблон называется `-t vite` (не react); `-b/--base` — библиотека примитивов (radix), не цвет; неинтерактивно: `-t vite --base radix -p <пресет> -n <имя> --no-monorepo` (stdin-промпты не читает)
 - CI/деплой пока не настроены (отложено). Запланировано: `go:embed` фронта в бинарь, GitHub Actions через `jdx/mise-action` + junit-отчёты (`GOTESTSUM_JUNITFILE`, vitest `--reporter=junit`), systemd на VPS — не предполагать, что это уже есть
+
+## Agent skills
+
+### Issue tracker
+
+Issues tracked in GitHub Issues (`mmurzin/ai-for-developers-project-386`) via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five triage labels, label string equals role name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
