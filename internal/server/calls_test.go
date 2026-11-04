@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mmurzin/ai-for-developers-project-386/internal/api"
 )
@@ -368,4 +370,49 @@ func TestSlotsExcludeBookedCalls(t *testing.T) {
 	}
 	wantSlot(t, half, day1+"T09:30:00+03:00", "30-минутный тип", true)
 	wantSlot(t, half, day1+"T11:00:00+03:00", "30-минутный тип", true)
+}
+
+// Записи переживают рестарт сервера (US13 спеки #6, как и Типы звонков
+// в TestCallTypesSurviveServerRestart): Тип звонка и Запись создаются
+// на первом «процессе», второй поднимается на том же файле базы —
+// Запись по-прежнему видна в предстоящих и вычтена из Слотов.
+func TestCallsSurviveServerRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "restart-calls.db")
+	clock := func() time.Time { return testNow }
+
+	first := newTestServerAtClock(t, dbPath, clock)
+	seedCallType(t, first, "intro", 30)
+	if rec := postCall(t, first, callBody("intro", day1+"T10:00:00+03:00", "Миша", "guest@example.com")); rec.Code != http.StatusCreated {
+		t.Fatalf("seed POST /api/calls: status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	// Новый «процесс» сервера на том же файле базы.
+	second := newTestServerAtClock(t, dbPath, clock)
+
+	// Предстоящие: Запись на месте, со всеми деталями.
+	rec := httptest.NewRecorder()
+	second.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/calls?range=upcoming", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/calls?range=upcoming after restart: status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var list struct {
+		Items []callDTO `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode upcoming calls: %v; body: %s", err, rec.Body.String())
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("upcoming calls after restart = %d, want 1; body: %s", len(list.Items), rec.Body.String())
+	}
+	call := list.Items[0]
+	if call.CallTypeId != "intro" || call.GuestName != "Миша" || call.StartsAt != day1+"T10:00:00+03:00" {
+		t.Errorf("call after restart = %+v, want intro / Миша / %sT10:00:00+03:00", call, day1)
+	}
+
+	// Вычет занятости из Слотов тоже пережил рестарт: старт 10:00
+	// (интервал Записи) исчез, примыкающие 09:30 и 10:30 — на месте.
+	starts := bookedSlotStarts(t, second, "intro")
+	wantSlot(t, starts, day1+"T10:00:00+03:00", "слоты после рестарта", false)
+	wantSlot(t, starts, day1+"T09:30:00+03:00", "слоты после рестарта", true)
+	wantSlot(t, starts, day1+"T10:30:00+03:00", "слоты после рестарта", true)
 }
