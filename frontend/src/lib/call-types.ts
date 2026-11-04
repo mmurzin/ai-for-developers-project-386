@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { createCallType, listCallTypes } from "@/api/sdk.gen"
 import type { CallType } from "@/api/types.gen"
@@ -18,62 +18,79 @@ type UseCallTypes = {
 
 const LOAD_ERROR = "Не удалось загрузить список типов звонков"
 
+type CallTypesResult =
+  | { kind: "ok"; items: CallType[] }
+  | { kind: "error"; message: string }
+
+// fetchCallTypes — один запрос списка Типов звонков без состояния
+// (идиома lib/slots.ts): и начальная загрузка, и обновление после
+// создания используют одну логику разбора. Сбой запроса (сеть,
+// ответ без тела) — тот же текст, что и пустой ответ.
+async function fetchCallTypes(): Promise<CallTypesResult> {
+  try {
+    const { data } = await listCallTypes()
+    if (!data) {
+      return { kind: "error", message: LOAD_ERROR }
+    }
+    return { kind: "ok", items: data.items ?? [] }
+  } catch {
+    return { kind: "error", message: LOAD_ERROR }
+  }
+}
+
 // useCallTypes — список и создание Типов звонков через сгенерированный
 // hey-api клиент. Ошибки создания (409/422 + ErrorBody) показываются
 // владельцу как есть.
 export function useCallTypes(): UseCallTypes {
   const [items, setItems] = useState<CallType[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
+  // Счётчик запросов: применяется только результат последнего —
+  // поздний ответ начальной загрузки не затирает ошибку создания.
+  const latestRequest = useRef(0)
 
-  const load = useCallback(async () => {
-    const { data } = await listCallTypes()
-    if (!data) {
-      setError(LOAD_ERROR)
+  const apply = useCallback((result: CallTypesResult) => {
+    if (result.kind === "error") {
+      setError(result.message)
       return
     }
     setError(undefined)
-    setItems(data.items ?? [])
+    setItems(result.items)
   }, [])
 
-  // setState — только в .then/.catch-колбэках, не в теле эффекта
+  // setState — только в .then-колбэках, не в теле эффекта
   // (react-hooks/set-state-in-effect).
   useEffect(() => {
     let cancelled = false
-    listCallTypes().then(
-      ({ data }) => {
-        if (cancelled) {
-          return
-        }
-        if (!data) {
-          setError(LOAD_ERROR)
-          return
-        }
-        setError(undefined)
-        setItems(data.items ?? [])
-      },
-      () => {
-        if (!cancelled) {
-          setError(LOAD_ERROR)
-        }
-      },
-    )
+    const request = ++latestRequest.current
+    fetchCallTypes().then((result) => {
+      if (!cancelled && latestRequest.current === request) {
+        apply(result)
+      }
+    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [apply])
 
   const create = useCallback(
     async (draft: CallTypeDraft) => {
+      // Создание — более новый запрос, чем начальная загрузка:
+      // его результат (ошибка или свежий список) главный.
+      const request = ++latestRequest.current
       const { error } = await createCallType({ body: draft })
       if (error) {
-        setError(error.message)
+        if (latestRequest.current === request) {
+          setError(error.message)
+        }
         return false
       }
-      setError(undefined)
-      await load()
+      const result = await fetchCallTypes()
+      if (latestRequest.current === request) {
+        apply(result)
+      }
       return true
     },
-    [load],
+    [apply],
   )
 
   return { items, error, create }
