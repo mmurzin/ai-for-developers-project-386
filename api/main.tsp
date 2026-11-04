@@ -51,7 +51,12 @@ op health(): HealthStatus;
  * - `start_not_on_grid` — старт не на сетке Слотов: не кратен 15 минутам
  *   от начала Рабочих часов (422);
  * - `slot_taken` — время пересекается с активной Записью любого
- *   Типа звонка (409).
+ *   Типа звонка (409);
+ * - `missing_query_param` — обязательный query-параметр отсутствует,
+ *   например `range` у списка Записей (400);
+ * - `invalid_query_param` — query-параметр не разобран (400);
+ * - `invalid_call_range` — значение `range` не из известных
+ *   (единственное валидное — `upcoming`) (422);
  */
 model ErrorBody {
   /**
@@ -304,3 +309,31 @@ model CallCreated extends CreatedResponse {
 @route("/api/calls")
 @post
 op createCall(@body body: CreateCallRequest): CallCreated | ConflictError | ValidationError;
+
+/**
+ * Диапазон списка Записей. `upcoming` — предстоящие: ещё не
+ * начавшиеся Записи (граница: начало >= текущего момента).
+ */
+enum CallRange {
+  upcoming: "upcoming";
+}
+
+/**
+ * Список Записей. Пустой список — валидный ответ.
+ */
+model CallList {
+  /**
+   * Записи выбранного диапазона; предстоящие — по возрастанию начала.
+   */
+  items: Call[];
+}
+
+/**
+ * Предстоящие Записи всех Типов звонков одним списком (Владелец
+ * страницы, без входа): ещё не начавшиеся (начало >= текущего
+ * момента), отсортированные по началу. Отсутствие `range` — 400,
+ * значение не из enum — 422 с кодом `invalid_call_range`.
+ */
+@route("/api/calls")
+@get
+op listCalls(@query("range") callRange: CallRange): CallList | ValidationError;

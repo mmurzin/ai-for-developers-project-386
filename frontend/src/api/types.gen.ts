@@ -45,6 +45,22 @@ export type Call = {
 }
 
 /**
+ * Список Записей. Пустой список — валидный ответ.
+ */
+export type CallList = {
+  /**
+   * Записи выбранного диапазона; предстоящие — по возрастанию начала.
+   */
+  items: Array<Call>
+}
+
+/**
+ * Диапазон списка Записей. `upcoming` — предстоящие: ещё не
+ * начавшиеся Записи (граница: начало >= текущего момента).
+ */
+export type CallRange = "upcoming"
+
+/**
  * Тип звонка: набор параметров, который задаёт Владелец страницы.
  */
 export type CallType = {
@@ -148,7 +164,12 @@ export type CreateCallTypeRequest = {
  * - `start_not_on_grid` — старт не на сетке Слотов: не кратен 15 минутам
  * от начала Рабочих часов (422);
  * - `slot_taken` — время пересекается с активной Записью любого
- * Типа звонка (409).
+ * Типа звонка (409);
+ * - `missing_query_param` — обязательный query-параметр отсутствует,
+ * например `range` у списка Записей (400);
+ * - `invalid_query_param` — query-параметр не разобран (400);
+ * - `invalid_call_range` — значение `range` не из известных
+ * (единственное валидное — `upcoming`) (422);
  */
 export type ErrorBody = {
   /**
@@ -272,6 +293,33 @@ export type ListSlotsResponses = {
 }
 
 export type ListSlotsResponse = ListSlotsResponses[keyof ListSlotsResponses]
+
+export type ListCallsData = {
+  body?: never
+  path?: never
+  query: {
+    range: CallRange
+  }
+  url: "/api/calls"
+}
+
+export type ListCallsErrors = {
+  /**
+   * Ошибка валидации данных запроса.
+   */
+  422: ErrorBody
+}
+
+export type ListCallsError = ListCallsErrors[keyof ListCallsErrors]
+
+export type ListCallsResponses = {
+  /**
+   * The request has succeeded.
+   */
+  200: CallList
+}
+
+export type ListCallsResponse = ListCallsResponses[keyof ListCallsResponses]
 
 export type CreateCallData = {
   body: CreateCallRequest

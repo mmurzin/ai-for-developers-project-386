@@ -9,12 +9,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for CallRange.
+const (
+	Upcoming CallRange = "upcoming"
+)
+
+// Valid indicates whether the value is a known member of the CallRange enum.
+func (e CallRange) Valid() bool {
+	switch e {
+	case Upcoming:
+		return true
+	default:
+		return false
+	}
+}
 
 // Call Запись: забронированный Звонок Гостя с Владельцем страницы (GLOSSARY.md).
 //
@@ -45,6 +61,16 @@ type Call struct {
 	// StartsAt Начало Звонка; ISO 8601 с явным смещением часового пояса.
 	StartsAt time.Time `json:"startsAt"`
 }
+
+// CallList Список Записей. Пустой список — валидный ответ.
+type CallList struct {
+	// Items Записи выбранного диапазона; предстоящие — по возрастанию начала.
+	Items []Call `json:"items"`
+}
+
+// CallRange Диапазон списка Записей. `upcoming` — предстоящие: ещё не
+// начавшиеся Записи (граница: начало >= текущего момента).
+type CallRange string
 
 // CallType Тип звонка: набор параметров, который задаёт Владелец страницы.
 type CallType struct {
@@ -124,7 +150,12 @@ type CreateCallTypeRequest struct {
 // - `start_not_on_grid` — старт не на сетке Слотов: не кратен 15 минутам
 // от начала Рабочих часов (422);
 // - `slot_taken` — время пересекается с активной Записью любого
-// Типа звонка (409).
+// Типа звонка (409);
+// - `missing_query_param` — обязательный query-параметр отсутствует,
+// например `range` у списка Записей (400);
+// - `invalid_query_param` — query-параметр не разобран (400);
+// - `invalid_call_range` — значение `range` не из известных
+// (единственное валидное — `upcoming`) (422);
 type ErrorBody struct {
 	// Code Machine-readable код ошибки.
 	Code string `json:"code"`
@@ -156,6 +187,11 @@ type SlotList struct {
 	Items []Slot `json:"items"`
 }
 
+// ListCallsParams defines parameters for ListCalls.
+type ListCallsParams struct {
+	Range CallRange `form:"range" json:"range"`
+}
+
 // CreateCallTypeJSONRequestBody defines body for CreateCallType for application/json ContentType.
 type CreateCallTypeJSONRequestBody = CreateCallTypeRequest
 
@@ -173,6 +209,9 @@ type ServerInterface interface {
 
 	// (GET /api/call-types/{id}/slots)
 	ListSlots(w http.ResponseWriter, r *http.Request, id string)
+
+	// (GET /api/calls)
+	ListCalls(w http.ResponseWriter, r *http.Request, params ListCallsParams)
 
 	// (POST /api/calls)
 	CreateCall(w http.ResponseWriter, r *http.Request)
@@ -235,6 +274,39 @@ func (siw *ServerInterfaceWrapper) ListSlots(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSlots(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCalls operation middleware
+func (siw *ServerInterfaceWrapper) ListCalls(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCallsParams
+
+	// ------------- Required query parameter "range" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "range", r.URL.Query(), &params.Range, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "range"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "range", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCalls(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -395,6 +467,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types", wrapper.ListCallTypes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/call-types", wrapper.CreateCallType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types/{id}/slots", wrapper.ListSlots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/calls", wrapper.ListCalls)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/calls", wrapper.CreateCall)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.Health)
 
@@ -508,6 +581,42 @@ func (response ListSlots404JSONResponse) VisitListSlotsResponse(w http.ResponseW
 	return err
 }
 
+type ListCallsRequestObject struct {
+	Params ListCallsParams
+}
+
+type ListCallsResponseObject interface {
+	VisitListCallsResponse(w http.ResponseWriter) error
+}
+
+type ListCalls200JSONResponse CallList
+
+func (response ListCalls200JSONResponse) VisitListCallsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCalls422JSONResponse ErrorBody
+
+func (response ListCalls422JSONResponse) VisitListCallsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateCallRequestObject struct {
 	Body *CreateCallJSONRequestBody
 }
@@ -590,6 +699,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/call-types/{id}/slots)
 	ListSlots(ctx context.Context, request ListSlotsRequestObject) (ListSlotsResponseObject, error)
+
+	// (GET /api/calls)
+	ListCalls(ctx context.Context, request ListCallsRequestObject) (ListCallsResponseObject, error)
 
 	// (POST /api/calls)
 	CreateCall(ctx context.Context, request CreateCallRequestObject) (CreateCallResponseObject, error)
@@ -711,6 +823,32 @@ func (sh *strictHandler) ListSlots(w http.ResponseWriter, r *http.Request, id st
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListSlotsResponseObject); ok {
 		if err := validResponse.VisitListSlotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCalls operation middleware
+func (sh *strictHandler) ListCalls(w http.ResponseWriter, r *http.Request, params ListCallsParams) {
+	var request ListCallsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCalls(ctx, request.(ListCallsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCalls")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCallsResponseObject); ok {
+		if err := validResponse.VisitListCallsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

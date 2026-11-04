@@ -17,6 +17,9 @@ import type {
   CreateCallTypeResponses,
   HealthData,
   HealthResponses,
+  ListCallsData,
+  ListCallsErrors,
+  ListCallsResponses,
   ListCallTypesData,
   ListCallTypesResponses,
   ListSlotsData,
@@ -86,6 +89,21 @@ export const listSlots = <ThrowOnError extends boolean = false>(
     ListSlotsErrors,
     ThrowOnError
   >({ url: "/api/call-types/{id}/slots", ...options })
+
+/**
+ * Предстоящие Записи всех Типов звонков одним списком (Владелец
+ * страницы, без входа): ещё не начавшиеся (начало >= текущего
+ * момента), отсортированные по началу. Отсутствие `range` — 400,
+ * значение не из enum — 422 с кодом `invalid_call_range`.
+ */
+export const listCalls = <ThrowOnError extends boolean = false>(
+  options: Options<ListCallsData, ThrowOnError>
+): RequestResult<ListCallsResponses, ListCallsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListCallsResponses,
+    ListCallsErrors,
+    ThrowOnError
+  >({ url: "/api/calls", ...options })
 
 /**
  * Создать Запись (Гость) на выбранный Слот: длительность — из Типа
