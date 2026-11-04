@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mmurzin/ai-for-developers-project-386/internal/api"
 	"github.com/mmurzin/ai-for-developers-project-386/internal/storage"
@@ -22,6 +23,13 @@ func newTestServer(t *testing.T) *http.Server {
 // (для проверки персистентности между «рестартами»).
 func newTestServerAtPath(t *testing.T, dbPath string) *http.Server {
 	t.Helper()
+	return newTestServerAtClock(t, dbPath, time.Now)
+}
+
+// newTestServerAtClock собирает сервер с фиксированными часами:
+// поведение, зависящее от времени (Слоты), становится детерминированным.
+func newTestServerAtClock(t *testing.T, dbPath string, now func() time.Time) *http.Server {
+	t.Helper()
 
 	store, err := storage.Open(dbPath)
 	if err != nil {
@@ -29,7 +37,7 @@ func newTestServerAtPath(t *testing.T, dbPath string) *http.Server {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	return NewServer(":0", store)
+	return NewServer(":0", store, now)
 }
 
 func postJSON(t *testing.T, srv *http.Server, url, body string) *httptest.ResponseRecorder {

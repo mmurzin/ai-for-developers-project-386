@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/mmurzin/ai-for-developers-project-386/internal/storage"
 )
 
@@ -10,12 +12,16 @@ import (
 type API struct {
 	HealthAPI
 	CallTypesAPI
+	SlotsAPI
 }
 
-// NewAPI собирает API поверх хранилища.
-func NewAPI(store *storage.Store) API {
+// NewAPI собирает API поверх хранилища и источника времени.
+// now — шов времени для computed-Слотов (продакшн — time.Now,
+// тесты — фиксированные часы).
+func NewAPI(store *storage.Store, now func() time.Time) API {
 	return API{
 		HealthAPI:    HealthAPI{},
 		CallTypesAPI: NewCallTypesAPI(store),
+		SlotsAPI:     NewSlotsAPI(store, now),
 	}
 }

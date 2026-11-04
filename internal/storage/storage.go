@@ -16,6 +16,10 @@ import (
 // Хендлеры API маппят её в 409, не зная кодов SQLite.
 var ErrDuplicate = errors.New("duplicate id")
 
+// ErrNotFound — семантическая ошибка «объект не найден».
+// Хендлеры API маппят её в 404.
+var ErrNotFound = errors.New("not found")
+
 // CallType — Тип звонка: параметры, которые задаёт Владелец страницы (GLOSSARY.md).
 type CallType struct {
 	ID              string
@@ -87,6 +91,22 @@ func (s *Store) CreateCallType(ctx context.Context, ct CallType) error {
 		return fmt.Errorf("insert call type %q: %w", ct.ID, err)
 	}
 	return nil
+}
+
+// GetCallType возвращает Тип звонка по идентификатору.
+// Отсутствие — ErrNotFound; прочее — обёрнутая ошибка драйвера.
+func (s *Store) GetCallType(ctx context.Context, id string) (CallType, error) {
+	var ct CallType
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, name, description, duration_minutes FROM call_types WHERE id = ?`, id,
+	).Scan(&ct.ID, &ct.Name, &ct.Description, &ct.DurationMinutes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CallType{}, ErrNotFound
+	}
+	if err != nil {
+		return CallType{}, fmt.Errorf("select call type %q: %w", id, err)
+	}
+	return ct, nil
 }
 
 // ListCallTypes возвращает все Типы звонков, отсортированные по идентификатору.

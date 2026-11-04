@@ -16,6 +16,9 @@ import type {
   HealthResponses,
   ListCallTypesData,
   ListCallTypesResponses,
+  ListSlotsData,
+  ListSlotsErrors,
+  ListSlotsResponses,
 } from "./types.gen"
 
 export type Options<
@@ -66,6 +69,20 @@ export const createCallType = <ThrowOnError extends boolean = false>(
       ...options.headers,
     },
   })
+
+/**
+ * Слоты Типа звонка (публично: их видит Гость): вычисленная сетка
+ * на Окно записи — 14 календарных дней со следующего дня,
+ * Рабочие часы 9:00–18:00 Europe/Moscow, старты каждые 15 минут.
+ */
+export const listSlots = <ThrowOnError extends boolean = false>(
+  options: Options<ListSlotsData, ThrowOnError>
+): RequestResult<ListSlotsResponses, ListSlotsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListSlotsResponses,
+    ListSlotsErrors,
+    ThrowOnError
+  >({ url: "/api/call-types/{id}/slots", ...options })
 
 /**
  * Проверка живости сервиса.
