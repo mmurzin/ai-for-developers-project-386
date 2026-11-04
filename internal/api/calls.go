@@ -85,6 +85,43 @@ func (a CallsAPI) CreateCall(ctx context.Context, request CreateCallRequestObjec
 	return CreateCall201JSONResponse(toAPICall(created, ct)), nil
 }
 
+// ListCalls отдаёт предстоящие Записи всех Типов звонков одним
+// списком (Владелец страницы, без входа): ещё не начавшиеся к
+// текущему моменту (starts_at >= now, начавшаяся Запись уже не
+// предстоящая), по возрастанию начала. Значение range не из enum —
+// 422 с кодом invalid_call_range.
+func (a CallsAPI) ListCalls(ctx context.Context, request ListCallsRequestObject) (ListCallsResponseObject, error) {
+	if !request.Params.Range.Valid() {
+		return ListCalls422JSONResponse(ErrorBody{
+			Code:    "invalid_call_range",
+			Message: "поддерживается только range=upcoming",
+		}), nil
+	}
+
+	calls, err := a.store.ListUpcomingCalls(ctx, a.now())
+	if err != nil {
+		return nil, err
+	}
+
+	// Название и Длительность звонка Типа звонка дублируются в каждой
+	// Записи (см. модель Call в api/main.tsp): беру их из справочника
+	// типов; FK в хранилище гарантирует, что тип каждой Записи существует.
+	types, err := a.store.ListCallTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	typesByID := make(map[string]storage.CallType, len(types))
+	for _, ct := range types {
+		typesByID[ct.ID] = ct
+	}
+
+	items := make([]Call, 0, len(calls))
+	for _, call := range calls {
+		items = append(items, toAPICall(call, typesByID[call.CallTypeID]))
+	}
+	return ListCalls200JSONResponse(CallList{Items: items}), nil
+}
+
 // validateCallStart проверяет время начала брони против правил
 // записи: не прошлое, внутри Окна записи, внутри Рабочих часов
 // целиком (с учётом Длительности звонка) и на сетке стартов.

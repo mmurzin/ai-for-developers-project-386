@@ -25,6 +25,10 @@ func NewServer(addr string, store *storage.Store, now func() time.Time) *http.Se
 	// 400 текстом. Поле не того типа (например, нецелая длительность) и
 	// кривая дата-время (startsAt Записи) — это ошибки валидации данных,
 	// а не синтаксиса: 422 с телом ErrorBody. Битый JSON остаётся 400.
+	// StdHTTPServerOptions.ErrorHandlerFunc: ошибки разбора path/query-
+	// параметров (роутинг кодгена) по умолчанию отдаются 400 plain text.
+	// Отсутствие обязательного query-параметра (range у списка Записей) —
+	// ошибка запроса: 400 с телом ErrorBody, как у остальных ручек.
 	api.HandlerWithOptions(
 		api.NewStrictHandlerWithOptions(api.NewAPI(store, now), nil, api.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -44,7 +48,18 @@ func NewServer(addr string, store *storage.Store, now func() time.Time) *http.Se
 					"тело запроса не является корректным JSON")
 			},
 		}),
-		api.StdHTTPServerOptions{BaseRouter: mux},
+		api.StdHTTPServerOptions{
+			BaseRouter: mux,
+			ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+				var required *api.RequiredParamError
+				if errors.As(err, &required) {
+					api.WriteError(w, http.StatusBadRequest, "missing_query_param",
+						fmt.Sprintf("query-параметр %q обязателен", required.ParamName))
+					return
+				}
+				api.WriteError(w, http.StatusBadRequest, "invalid_query_param", err.Error())
+			},
+		},
 	)
 
 	mux.Handle("GET /", web.Handler())

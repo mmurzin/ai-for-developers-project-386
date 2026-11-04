@@ -227,6 +227,43 @@ func (s *Store) CreateCall(ctx context.Context, call Call) (Call, error) {
 	return call, nil
 }
 
+// ListUpcomingCalls возвращает Записи, ещё не начавшиеся к моменту
+// from: граница «предстоящего» — starts_at >= from (начавшаяся Запись,
+// даже не закончившаяся, предстоящей уже не считается). Порядок —
+// по возрастанию начала.
+func (s *Store) ListUpcomingCalls(ctx context.Context, from time.Time) ([]Call, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, call_type_id, starts_at, ends_at, guest_name, guest_contact
+		 FROM calls WHERE starts_at >= ? ORDER BY starts_at`,
+		formatUTC(from),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("select upcoming calls: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var calls []Call
+	for rows.Next() {
+		var call Call
+		var startsAt, endsAt string
+		if err := rows.Scan(&call.ID, &call.CallTypeID, &startsAt, &endsAt,
+			&call.GuestName, &call.GuestContact); err != nil {
+			return nil, fmt.Errorf("scan call: %w", err)
+		}
+		if call.StartsAt, err = time.Parse(time.RFC3339, startsAt); err != nil {
+			return nil, fmt.Errorf("parse starts_at %q: %w", startsAt, err)
+		}
+		if call.EndsAt, err = time.Parse(time.RFC3339, endsAt); err != nil {
+			return nil, fmt.Errorf("parse ends_at %q: %w", endsAt, err)
+		}
+		calls = append(calls, call)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate calls: %w", err)
+	}
+	return calls, nil
+}
+
 // ListCallsInRange возвращает активные Записи, чей интервал
 // [начало, конец) пересекается с [from, to). Порядок — по началу.
 // Нужна для вычета занятости из computed-Слотов.
