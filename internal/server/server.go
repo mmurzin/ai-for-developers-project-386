@@ -22,8 +22,9 @@ func NewServer(addr string, store *storage.Store, now func() time.Time) *http.Se
 	// типизированные strict-хендлеры, паттерны Go 1.22 на общем мухе.
 	//
 	// RequestErrorHandlerFunc: ошибки декодинга тела по умолчанию отдаются
-	// 400 текстом. Поле не того типа (например, нецелая длительность) —
-	// это ошибка валидации данных, а не синтаксиса: 422 с телом ErrorBody.
+	// 400 текстом. Поле не того типа (например, нецелая длительность) и
+	// кривая дата-время (startsAt Записи) — это ошибки валидации данных,
+	// а не синтаксиса: 422 с телом ErrorBody. Битый JSON остаётся 400.
 	api.HandlerWithOptions(
 		api.NewStrictHandlerWithOptions(api.NewAPI(store, now), nil, api.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -31,6 +32,12 @@ func NewServer(addr string, store *storage.Store, now func() time.Time) *http.Se
 				if errors.As(err, &typeErr) {
 					api.WriteError(w, http.StatusUnprocessableEntity, "invalid_field_type",
 						fmt.Sprintf("поле %s: неверный тип", typeErr.Field))
+					return
+				}
+				var parseErr *time.ParseError
+				if errors.As(err, &parseErr) {
+					api.WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format",
+						"поле startsAt: ожидается дата-время ISO 8601 со смещением, например 2026-11-05T10:00:00+03:00")
 					return
 				}
 				api.WriteError(w, http.StatusBadRequest, "malformed_json",
