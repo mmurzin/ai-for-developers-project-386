@@ -7,13 +7,17 @@ oapi-codegen = "2.8.1"
 gotestsum = "1.13.0"
 "go:github.com/fe3dback/go-arch-lint" = "1.19.1"
 gh = "2.103.3"
+# Playwright как mise-инструмент: спеки в e2e/ живут без package.json
+# в корне (репо — не npm-пакет); спеки импортируют "@playwright/test",
+# а не "playwright/test" — работает только с этим именем пакета.
+"npm:@playwright/test" = "1.64.1"
 
 [tasks.dev]
 depends = ["run", "frontend-dev"]
 run = "echo 'бэк: http://localhost:8080/health — фронт: http://localhost:5173'"
 
 [tasks.check]
-run = ["mise run lint", "mise run test", "mise run frontend-test", "mise run api-check"]
+run = ["mise run lint", "mise run test", "mise run frontend-test", "mise run e2e", "mise run api-check"]
 
 [tasks.api-install]
 dir = "api"
@@ -71,3 +75,35 @@ run = "pnpm dev"
 [tasks.frontend-build]
 dir = "frontend"
 run = "pnpm build"
+
+# Браузерные тесты (Playwright как mise-инструмент, без package.json в корне):
+# против настоящего сервера — собранного бинаря с embed-фронтом.
+[tasks.e2e-install]
+run = "playwright install chromium"
+# идемпотентно: если браузеры на месте — мгновенный no-op
+
+# Сборка e2e-бинаря: build прогоняет фронт и копирует его в internal/web/dist,
+# поэтому go build зашивает в бинарь настоящий SPA, а не placeholder.
+[tasks.e2e-build]
+depends = ["build"]
+run = [
+  "mkdir -p tmp",
+  "go build -o tmp/e2e-server ./cmd/server",
+]
+
+[tasks.e2e]
+depends = ["e2e-install", "e2e-build"]
+run = [
+  "rm -f tmp/e2e.db",
+  "playwright test -c e2e/playwright.config.ts",
+]
+
+[tasks.e2e-junit]
+depends = ["e2e-install", "e2e-build"]
+run = [
+  "rm -f tmp/e2e.db",
+  "mkdir -p reports",
+  # outputFile для junit-репортера задаётся env (CLI-флага нет);
+  # путь абсолютный: playwright резолвит его относительно директории конфига
+  "PLAYWRIGHT_JUNIT_OUTPUT_NAME=\"$PWD/reports/junit-e2e.xml\" playwright test -c e2e/playwright.config.ts --reporter=junit",
+]

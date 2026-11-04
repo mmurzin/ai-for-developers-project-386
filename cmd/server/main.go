@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mmurzin/ai-for-developers-project-386/internal/server"
+	"github.com/mmurzin/ai-for-developers-project-386/internal/storage"
 )
 
 func main() {
@@ -19,7 +20,18 @@ func main() {
 		port = "8080"
 	}
 
-	srv := server.NewServer(":" + port)
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "calls.db"
+	}
+
+	store, err := storage.Open(dbPath)
+	if err != nil {
+		log.Fatalf("open storage: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	srv := server.NewServer(":"+port, store, time.Now)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

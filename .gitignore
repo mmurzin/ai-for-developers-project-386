@@ -12,5 +12,13 @@ internal/web/dist/*
 internal/web/dist/assets/*
 !internal/web/dist/assets/.gitkeep
 
+# sqlite databases (DB_PATH default & local runs)
+*.db
+
+# playwright e2e: артефакты прогонов и throwaway-бинарь/база
+test-results/
+playwright-report/
+tmp/
+
 # test reports (junit)
 reports/

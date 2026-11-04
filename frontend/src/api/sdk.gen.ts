@@ -8,7 +8,24 @@ import type {
   TDataShape,
 } from "./client"
 import { client } from "./client.gen"
-import type { HealthData, HealthResponses } from "./types.gen"
+import type {
+  CreateCallData,
+  CreateCallErrors,
+  CreateCallResponses,
+  CreateCallTypeData,
+  CreateCallTypeErrors,
+  CreateCallTypeResponses,
+  HealthData,
+  HealthResponses,
+  ListCallsData,
+  ListCallsErrors,
+  ListCallsResponses,
+  ListCallTypesData,
+  ListCallTypesResponses,
+  ListSlotsData,
+  ListSlotsErrors,
+  ListSlotsResponses,
+} from "./types.gen"
 
 export type Options<
   TData extends TDataShape = TDataShape,
@@ -27,6 +44,89 @@ export type Options<
    */
   meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta
 }
+
+/**
+ * Список Типов звонков (публично: их видит Гость).
+ */
+export const listCallTypes = <ThrowOnError extends boolean = false>(
+  options?: Options<ListCallTypesData, ThrowOnError>
+): RequestResult<ListCallTypesResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListCallTypesResponses,
+    unknown,
+    ThrowOnError
+  >({ url: "/api/call-types", ...options })
+
+/**
+ * Создать Тип звонка (Владелец страницы).
+ */
+export const createCallType = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCallTypeData, ThrowOnError>
+): RequestResult<CreateCallTypeResponses, CreateCallTypeErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateCallTypeResponses,
+    CreateCallTypeErrors,
+    ThrowOnError
+  >({
+    url: "/api/call-types",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Слоты Типа звонка (публично: их видит Гость): вычисленная сетка
+ * на Окно записи — 14 календарных дней со следующего дня,
+ * Рабочие часы 9:00–18:00 Europe/Moscow, старты каждые 15 минут.
+ */
+export const listSlots = <ThrowOnError extends boolean = false>(
+  options: Options<ListSlotsData, ThrowOnError>
+): RequestResult<ListSlotsResponses, ListSlotsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListSlotsResponses,
+    ListSlotsErrors,
+    ThrowOnError
+  >({ url: "/api/call-types/{id}/slots", ...options })
+
+/**
+ * Предстоящие Записи всех Типов звонков одним списком (Владелец
+ * страницы, без входа): ещё не начавшиеся (начало >= текущего
+ * момента), отсортированные по началу. Отсутствие `range` — 400,
+ * значение не из enum — 422 с кодом `invalid_call_range`.
+ */
+export const listCalls = <ThrowOnError extends boolean = false>(
+  options: Options<ListCallsData, ThrowOnError>
+): RequestResult<ListCallsResponses, ListCallsErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    ListCallsResponses,
+    ListCallsErrors,
+    ThrowOnError
+  >({ url: "/api/calls", ...options })
+
+/**
+ * Создать Запись (Гость) на выбранный Слот: длительность — из Типа
+ * звонка. Пересечение с активной Записью любого Типа звонка — 409;
+ * ошибки данных (неизвестный тип, пустые имя/контакт, прошлое,
+ * вне Окна записи или Рабочих часов, старт не на сетке, кривая дата)
+ * — 422 с machine-readable кодом.
+ */
+export const createCall = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCallData, ThrowOnError>
+): RequestResult<CreateCallResponses, CreateCallErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateCallResponses,
+    CreateCallErrors,
+    ThrowOnError
+  >({
+    url: "/api/calls",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
 
 /**
  * Проверка живости сервиса.
