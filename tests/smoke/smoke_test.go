@@ -3,12 +3,14 @@ package smoke_test
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,6 +63,26 @@ func TestAppStartup(t *testing.T) {
 	}
 	if body.Status != "ok" {
 		t.Fatalf("expected status ok, got %q", body.Status)
+	}
+
+	rootResp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/")
+	if err != nil {
+		t.Fatalf("get root: %v", err)
+	}
+	defer func() { _ = rootResp.Body.Close() }()
+
+	if rootResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected root status 200, got %d", rootResp.StatusCode)
+	}
+	if got := rootResp.Header.Get("Content-Type"); !strings.Contains(got, "text/html") {
+		t.Fatalf("expected root Content-Type text/html, got %q", got)
+	}
+	html, err := io.ReadAll(rootResp.Body)
+	if err != nil {
+		t.Fatalf("read root body: %v", err)
+	}
+	if !strings.Contains(string(html), `id="root"`) {
+		t.Fatalf("root body does not contain root div: %s", html)
 	}
 }
 

@@ -14,4 +14,12 @@ jobs:
 
       - uses: jdx/mise-action@v2
 
-      - run: mise run check
+      - run: mise run api-check
+      - run: mise run lint
+      - run: mise run test-junit
+      - run: mise run frontend-test-junit
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: junit-reports
+          path: reports/*.xml

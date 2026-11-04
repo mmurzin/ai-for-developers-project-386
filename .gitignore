@@ -1,2 +1,16 @@
 .DS_Store
 node_modules/
+
+# typespec: emit сконфигурирован прямо в api/, но соседние эмиттеры
+# по умолчанию пишут в tsp-output/ — не закоммитить случайно
+tsp-output/
+
+# embedded frontend build: only the placeholder index.html is tracked
+internal/web/dist/*
+!internal/web/dist/index.html
+!internal/web/dist/assets/
+internal/web/dist/assets/*
+!internal/web/dist/assets/.gitkeep
+
+# test reports (junit)
+reports/
