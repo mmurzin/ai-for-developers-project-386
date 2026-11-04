@@ -35,7 +35,10 @@ func TestAppStartup(t *testing.T) {
 	_ = listener.Close()
 
 	app := exec.Command(bin)
-	app.Env = append(app.Env, "PORT="+strconv.Itoa(port))
+	app.Env = append(app.Env,
+		"PORT="+strconv.Itoa(port),
+		"DB_PATH="+filepath.Join(t.TempDir(), "smoke.db"),
+	)
 	if err := app.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
 	}

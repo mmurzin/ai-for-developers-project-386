@@ -11,7 +11,63 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/oapi-codegen/runtime"
 )
+
+// CallType Тип звонка: набор параметров, который задаёт Владелец страницы.
+type CallType struct {
+	// Description Описание вида Звонка.
+	Description string `json:"description"`
+
+	// DurationMinutes Длительность звонка в минутах: целое от 5 до 240.
+	DurationMinutes int32 `json:"durationMinutes"`
+
+	// Id Идентификатор: строковый, задаёт Владелец страницы.
+	Id string `json:"id"`
+
+	// Name Название для отображения Гостю.
+	Name string `json:"name"`
+}
+
+// CallTypeList Список Типов звонков.
+type CallTypeList struct {
+	// Items Созданные Типы звонков.
+	Items []CallType `json:"items"`
+}
+
+// CreateCallTypeRequest Данные для создания Типа звонка.
+type CreateCallTypeRequest struct {
+	// Description Описание вида Звонка.
+	Description string `json:"description"`
+
+	// DurationMinutes Длительность звонка в минутах: целое от 5 до 240.
+	DurationMinutes int32 `json:"durationMinutes"`
+
+	// Id Идентификатор: строковый, задаёт Владелец страницы.
+	Id string `json:"id"`
+
+	// Name Название для отображения Гостю.
+	Name string `json:"name"`
+}
+
+// ErrorBody Тело ошибки: machine-readable код + сообщение для человека.
+//
+// Коды (snake_case), используемые сервисом:
+// - `malformed_json` — тело запроса не является корректным JSON (400);
+// - `invalid_field_type` — поле запроса имеет неверный тип,
+// например нецелая длительность (422);
+// - `empty_id` — пустой идентификатор Типа звонка (422);
+// - `empty_name` — пустое название Типа звонка (422);
+// - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
+// - `duplicate_id` — идентификатор Типа звонка уже существует (409).
+type ErrorBody struct {
+	// Code Machine-readable код ошибки.
+	Code string `json:"code"`
+
+	// Message Сообщение для человека.
+	Message string `json:"message"`
+}
 
 // HealthStatus Ответ проверки живости сервиса.
 type HealthStatus struct {
@@ -19,8 +75,17 @@ type HealthStatus struct {
 	Status string `json:"status"`
 }
 
+// CreateCallTypeJSONRequestBody defines body for CreateCallType for application/json ContentType.
+type CreateCallTypeJSONRequestBody = CreateCallTypeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+
+	// (GET /api/call-types)
+	ListCallTypes(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/call-types)
+	CreateCallType(w http.ResponseWriter, r *http.Request)
 
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -34,6 +99,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListCallTypes operation middleware
+func (siw *ServerInterfaceWrapper) ListCallTypes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCallTypes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCallType operation middleware
+func (siw *ServerInterfaceWrapper) CreateCallType(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCallType(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Health operation middleware
 func (siw *ServerInterfaceWrapper) Health(w http.ResponseWriter, r *http.Request) {
@@ -169,9 +262,82 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types", wrapper.ListCallTypes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/call-types", wrapper.CreateCallType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.Health)
 
 	return m
+}
+
+type ListCallTypesRequestObject struct {
+}
+
+type ListCallTypesResponseObject interface {
+	VisitListCallTypesResponse(w http.ResponseWriter) error
+}
+
+type ListCallTypes200JSONResponse CallTypeList
+
+func (response ListCallTypes200JSONResponse) VisitListCallTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCallTypeRequestObject struct {
+	Body *CreateCallTypeJSONRequestBody
+}
+
+type CreateCallTypeResponseObject interface {
+	VisitCreateCallTypeResponse(w http.ResponseWriter) error
+}
+
+type CreateCallType201JSONResponse CallType
+
+func (response CreateCallType201JSONResponse) VisitCreateCallTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCallType409JSONResponse ErrorBody
+
+func (response CreateCallType409JSONResponse) VisitCreateCallTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCallType422JSONResponse ErrorBody
+
+func (response CreateCallType422JSONResponse) VisitCreateCallTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type HealthRequestObject struct {
@@ -197,6 +363,12 @@ func (response Health200JSONResponse) VisitHealthResponse(w http.ResponseWriter)
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+
+	// (GET /api/call-types)
+	ListCallTypes(ctx context.Context, request ListCallTypesRequestObject) (ListCallTypesResponseObject, error)
+
+	// (POST /api/call-types)
+	CreateCallType(ctx context.Context, request CreateCallTypeRequestObject) (CreateCallTypeResponseObject, error)
 
 	// (GET /health)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
@@ -239,6 +411,61 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListCallTypes operation middleware
+func (sh *strictHandler) ListCallTypes(w http.ResponseWriter, r *http.Request) {
+	var request ListCallTypesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCallTypes(ctx, request.(ListCallTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCallTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCallTypesResponseObject); ok {
+		if err := validResponse.VisitListCallTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCallType operation middleware
+func (sh *strictHandler) CreateCallType(w http.ResponseWriter, r *http.Request) {
+	var request CreateCallTypeRequestObject
+
+	var body CreateCallTypeJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCallType(ctx, request.(CreateCallTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCallType")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCallTypeResponseObject); ok {
+		if err := validResponse.VisitCreateCallTypeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // Health operation middleware

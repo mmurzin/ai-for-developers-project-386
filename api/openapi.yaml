@@ -4,6 +4,47 @@ info:
   version: 0.0.1
 tags: []
 paths:
+  /api/call-types:
+    post:
+      operationId: createCallType
+      description: Создать Тип звонка (Владелец страницы).
+      parameters: []
+      responses:
+        '201':
+          description: Тип звонка создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallType'
+        '409':
+          description: Дубликат идентификатора Типа звонка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '422':
+          description: Ошибка валидации данных запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCallTypeRequest'
+    get:
+      operationId: listCallTypes
+      description: 'Список Типов звонков (публично: их видит Гость).'
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallTypeList'
   /health:
     get:
       operationId: health
@@ -18,6 +59,84 @@ paths:
                 $ref: '#/components/schemas/HealthStatus'
 components:
   schemas:
+    CallType:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - durationMinutes
+      properties:
+        id:
+          type: string
+          description: 'Идентификатор: строковый, задаёт Владелец страницы.'
+        name:
+          type: string
+          description: Название для отображения Гостю.
+        description:
+          type: string
+          description: Описание вида Звонка.
+        durationMinutes:
+          type: integer
+          format: int32
+          description: 'Длительность звонка в минутах: целое от 5 до 240.'
+      description: 'Тип звонка: набор параметров, который задаёт Владелец страницы.'
+    CallTypeList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallType'
+          description: Созданные Типы звонков.
+      description: Список Типов звонков.
+    CreateCallTypeRequest:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - durationMinutes
+      properties:
+        id:
+          type: string
+          description: 'Идентификатор: строковый, задаёт Владелец страницы.'
+        name:
+          type: string
+          description: Название для отображения Гостю.
+        description:
+          type: string
+          description: Описание вида Звонка.
+        durationMinutes:
+          type: integer
+          format: int32
+          description: 'Длительность звонка в минутах: целое от 5 до 240.'
+      description: Данные для создания Типа звонка.
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable код ошибки.
+        message:
+          type: string
+          description: Сообщение для человека.
+      description: |-
+        Тело ошибки: machine-readable код + сообщение для человека.
+
+        Коды (snake_case), используемые сервисом:
+        - `malformed_json` — тело запроса не является корректным JSON (400);
+        - `invalid_field_type` — поле запроса имеет неверный тип,
+        например нецелая длительность (422);
+        - `empty_id` — пустой идентификатор Типа звонка (422);
+        - `empty_name` — пустое название Типа звонка (422);
+        - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
+        - `duplicate_id` — идентификатор Типа звонка уже существует (409).
     HealthStatus:
       type: object
       required:
