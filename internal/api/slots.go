@@ -84,13 +84,22 @@ type busyInterval struct {
 	end   time.Time
 }
 
+// dayWorkBounds — границы Рабочих часов календарного дня в зоне:
+// единое место сборки time.Date по константам рабочих часов, чтобы
+// сетка Слотов и проверки Записей не разошлись. Месяц и день могут
+// выходить за диапазон — time.Date нормализует (завтра = d+1 и т.п.).
+func dayWorkBounds(zone *time.Location, y int, m time.Month, d int) (start, end time.Time) {
+	return time.Date(y, m, d, workStartHour, 0, 0, 0, zone),
+		time.Date(y, m, d, workEndHour, 0, 0, 0, zone)
+}
+
 // bookingWindowBounds — границы Окна записи от «сейчас»: от начала
 // Рабочих часов первого дня (завтра) до конца Рабочих часов последнего.
 func bookingWindowBounds(now time.Time) (time.Time, time.Time) {
-	today := now.In(instanceZone)
-	y, m, d := today.Date()
-	return time.Date(y, m, d+1, workStartHour, 0, 0, 0, instanceZone),
-		time.Date(y, m, d+bookingWindowDays, workEndHour, 0, 0, 0, instanceZone)
+	y, m, d := now.In(instanceZone).Date()
+	start, _ := dayWorkBounds(instanceZone, y, m, d+1)
+	_, end := dayWorkBounds(instanceZone, y, m, d+bookingWindowDays)
+	return start, end
 }
 
 // overlapsBusy — пересекается ли [start, end) с каким-либо занятым
@@ -123,8 +132,7 @@ func computeSlots(now time.Time, durationMinutes int32, busy []busyInterval) []S
 
 	slots := make([]Slot, 0, bookingWindowDays*int(workEndHour-workStartHour)*2)
 	for day := 1; day <= bookingWindowDays; day++ {
-		workStart := time.Date(y, m, d+day, workStartHour, 0, 0, 0, instanceZone)
-		workEnd := time.Date(y, m, d+day, workEndHour, 0, 0, 0, instanceZone)
+		workStart, workEnd := dayWorkBounds(instanceZone, y, m, d+day)
 		for start := workStart; !start.Add(duration).After(workEnd); start = start.Add(slotStep) {
 			end := start.Add(duration)
 			if overlapsBusy(start, end, busy) {

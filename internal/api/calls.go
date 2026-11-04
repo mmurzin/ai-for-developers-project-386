@@ -149,8 +149,7 @@ func validateCallStart(now, start time.Time, durationMinutes int32) (bool, Creat
 
 	// Рабочие часы: Запись вписывается целиком — конец не позже
 	// конца Рабочих часов того же дня.
-	workStart := time.Date(sy, sm, sd, workStartHour, 0, 0, 0, instanceZone)
-	workEnd := time.Date(sy, sm, sd, workEndHour, 0, 0, 0, instanceZone)
+	workStart, workEnd := dayWorkBounds(instanceZone, sy, sm, sd)
 	end := start.Add(time.Duration(durationMinutes) * time.Minute)
 	if localStart.Before(workStart) || end.In(instanceZone).After(workEnd) {
 		return unprocessable("outside_working_hours",

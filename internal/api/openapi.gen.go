@@ -43,7 +43,7 @@ type Call struct {
 	// CallTypeId Идентификатор Типа звонка, на который создана Запись.
 	CallTypeId string `json:"callTypeId"`
 
-	// CallTypeName Название Типа звонка на момент брони (для показа Гостю и Владельцу).
+	// CallTypeName Название Типа звонка на момент создания Записи (для показа Гостю и Владельцу).
 	CallTypeName string `json:"callTypeName"`
 
 	// DurationMinutes Длительность звонка в минутах — из Типа звонка.
@@ -74,7 +74,7 @@ type CallRange string
 
 // CallType Тип звонка: набор параметров, который задаёт Владелец страницы.
 type CallType struct {
-	// Description Описание вида Звонка.
+	// Description Описание Типа звонка.
 	Description string `json:"description"`
 
 	// DurationMinutes Длительность звонка в минутах: целое от 5 до 240.
@@ -94,9 +94,9 @@ type CallTypeList struct {
 }
 
 // CreateCallRequest Данные для создания Записи (Гость). Длительность не передаётся:
-// она берётся из Типа звонка, endsAt вычисляет сервер. Бронировать
-// нужно Слот: начало — на сетке стартов внутри Рабочих часов
-// и Окна записи, без пересечения с активными Записями.
+// она берётся из Типа звонка, endsAt вычисляет сервер. Запись
+// создаётся на выбранный Слот: начало — на сетке стартов внутри
+// Рабочих часов и Окна записи, без пересечения с активными Записями.
 type CreateCallRequest struct {
 	// CallTypeId Идентификатор Типа звонка.
 	CallTypeId string `json:"callTypeId"`
@@ -113,7 +113,7 @@ type CreateCallRequest struct {
 
 // CreateCallTypeRequest Данные для создания Типа звонка.
 type CreateCallTypeRequest struct {
-	// Description Описание вида Звонка.
+	// Description Описание Типа звонка.
 	Description string `json:"description"`
 
 	// DurationMinutes Длительность звонка в минутах: целое от 5 до 240.

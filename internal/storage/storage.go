@@ -227,41 +227,23 @@ func (s *Store) CreateCall(ctx context.Context, call Call) (Call, error) {
 	return call, nil
 }
 
+// callsColumns — список колонок Записи в списочных SELECT;
+// порядок обязан совпадать с порядком чтения в scanCalls.
+const callsColumns = "id, call_type_id, starts_at, ends_at, guest_name, guest_contact"
+
 // ListUpcomingCalls возвращает Записи, ещё не начавшиеся к моменту
 // from: граница «предстоящего» — starts_at >= from (начавшаяся Запись,
 // даже не закончившаяся, предстоящей уже не считается). Порядок —
 // по возрастанию начала.
 func (s *Store) ListUpcomingCalls(ctx context.Context, from time.Time) ([]Call, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, call_type_id, starts_at, ends_at, guest_name, guest_contact
-		 FROM calls WHERE starts_at >= ? ORDER BY starts_at`,
+		fmt.Sprintf(`SELECT %s FROM calls WHERE starts_at >= ? ORDER BY starts_at`, callsColumns),
 		formatUTC(from),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("select upcoming calls: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-
-	var calls []Call
-	for rows.Next() {
-		var call Call
-		var startsAt, endsAt string
-		if err := rows.Scan(&call.ID, &call.CallTypeID, &startsAt, &endsAt,
-			&call.GuestName, &call.GuestContact); err != nil {
-			return nil, fmt.Errorf("scan call: %w", err)
-		}
-		if call.StartsAt, err = time.Parse(time.RFC3339, startsAt); err != nil {
-			return nil, fmt.Errorf("parse starts_at %q: %w", startsAt, err)
-		}
-		if call.EndsAt, err = time.Parse(time.RFC3339, endsAt); err != nil {
-			return nil, fmt.Errorf("parse ends_at %q: %w", endsAt, err)
-		}
-		calls = append(calls, call)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate calls: %w", err)
-	}
-	return calls, nil
+	return scanCalls(rows)
 }
 
 // ListCallsInRange возвращает активные Записи, чей интервал
@@ -269,13 +251,19 @@ func (s *Store) ListUpcomingCalls(ctx context.Context, from time.Time) ([]Call, 
 // Нужна для вычета занятости из computed-Слотов.
 func (s *Store) ListCallsInRange(ctx context.Context, from, to time.Time) ([]Call, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, call_type_id, starts_at, ends_at, guest_name, guest_contact
-		 FROM calls WHERE starts_at < ? AND ends_at > ? ORDER BY starts_at`,
+		fmt.Sprintf(`SELECT %s FROM calls WHERE starts_at < ? AND ends_at > ? ORDER BY starts_at`, callsColumns),
 		formatUTC(to), formatUTC(from),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("select calls in range: %w", err)
 	}
+	return scanCalls(rows)
+}
+
+// scanCalls читает результат списочного SELECT Записей: единое место
+// порядка колонок (callsColumns), разбора RFC 3339 и rows.Err для
+// всех списочных запросов Записей.
+func scanCalls(rows *sql.Rows) ([]Call, error) {
 	defer func() { _ = rows.Close() }()
 
 	var calls []Call
@@ -286,12 +274,15 @@ func (s *Store) ListCallsInRange(ctx context.Context, from, to time.Time) ([]Cal
 			&call.GuestName, &call.GuestContact); err != nil {
 			return nil, fmt.Errorf("scan call: %w", err)
 		}
-		if call.StartsAt, err = time.Parse(time.RFC3339, startsAt); err != nil {
+		start, err := time.Parse(time.RFC3339, startsAt)
+		if err != nil {
 			return nil, fmt.Errorf("parse starts_at %q: %w", startsAt, err)
 		}
-		if call.EndsAt, err = time.Parse(time.RFC3339, endsAt); err != nil {
+		end, err := time.Parse(time.RFC3339, endsAt)
+		if err != nil {
 			return nil, fmt.Errorf("parse ends_at %q: %w", endsAt, err)
 		}
+		call.StartsAt, call.EndsAt = start, end
 		calls = append(calls, call)
 	}
 	if err := rows.Err(); err != nil {
