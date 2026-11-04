@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,12 @@ export function CallTypes() {
             Создавайте виды Звонков: Гость увидит их на главной странице и
             сможет записаться.
           </p>
+          <Link
+            to="/admin/upcoming"
+            className="text-muted-foreground underline-offset-4 text-sm hover:underline"
+          >
+            Предстоящие →
+          </Link>
         </header>
 
         <form
