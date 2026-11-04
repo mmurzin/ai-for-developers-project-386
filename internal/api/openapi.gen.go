@@ -16,6 +16,36 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Call Запись: забронированный Звонок Гостя с Владельцем страницы (GLOSSARY.md).
+//
+// Название и Длительность звонка Типа звонка дублируются в Записи
+// сознательно: экран подтверждения Гостя и предстоящие Звонки (#17)
+// показывают их без отдельного запроса; Типы звонков не редактируются,
+// поэтому рассинхронизоваться значения не могут. endsAt вычисляет
+// сервер: startsAt + Длительность звонка Типа звонка.
+type Call struct {
+	// CallTypeId Идентификатор Типа звонка, на который создана Запись.
+	CallTypeId string `json:"callTypeId"`
+
+	// CallTypeName Название Типа звонка на момент брони (для показа Гостю и Владельцу).
+	CallTypeName string `json:"callTypeName"`
+
+	// DurationMinutes Длительность звонка в минутах — из Типа звонка.
+	DurationMinutes int32 `json:"durationMinutes"`
+
+	// EndsAt Конец Звонка: начало плюс Длительность звонка Типа звонка.
+	EndsAt time.Time `json:"endsAt"`
+
+	// GuestContact Контакт Гостя: как связаться по поводу Звонка.
+	GuestContact string `json:"guestContact"`
+
+	// GuestName Имя Гостя.
+	GuestName string `json:"guestName"`
+
+	// StartsAt Начало Звонка; ISO 8601 с явным смещением часового пояса.
+	StartsAt time.Time `json:"startsAt"`
+}
+
 // CallType Тип звонка: набор параметров, который задаёт Владелец страницы.
 type CallType struct {
 	// Description Описание вида Звонка.
@@ -35,6 +65,24 @@ type CallType struct {
 type CallTypeList struct {
 	// Items Созданные Типы звонков.
 	Items []CallType `json:"items"`
+}
+
+// CreateCallRequest Данные для создания Записи (Гость). Длительность не передаётся:
+// она берётся из Типа звонка, endsAt вычисляет сервер. Бронировать
+// нужно Слот: начало — на сетке стартов внутри Рабочих часов
+// и Окна записи, без пересечения с активными Записями.
+type CreateCallRequest struct {
+	// CallTypeId Идентификатор Типа звонка.
+	CallTypeId string `json:"callTypeId"`
+
+	// GuestContact Контакт Гостя: как связаться по поводу Звонка.
+	GuestContact string `json:"guestContact"`
+
+	// GuestName Имя Гостя.
+	GuestName string `json:"guestName"`
+
+	// StartsAt Время начала Слота; ISO 8601 с явным смещением часового пояса.
+	StartsAt time.Time `json:"startsAt"`
 }
 
 // CreateCallTypeRequest Данные для создания Типа звонка.
@@ -58,11 +106,25 @@ type CreateCallTypeRequest struct {
 // - `malformed_json` — тело запроса не является корректным JSON (400);
 // - `invalid_field_type` — поле запроса имеет неверный тип,
 // например нецелая длительность (422);
+// - `invalid_date_format` — поле-дата (например startsAt Записи)
+// не парсится как ISO 8601 дата-время со смещением (422);
 // - `empty_id` — пустой идентификатор Типа звонка (422);
 // - `empty_name` — пустое название Типа звонка (422);
 // - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
 // - `duplicate_id` — идентификатор Типа звонка уже существует (409);
-// - `call_type_not_found` — Тип звонка по идентификатору не найден (404).
+// - `call_type_not_found` — Тип звонка по идентификатору не найден (404);
+// - `unknown_call_type` — Тип звонка при создании Записи не найден (422);
+// - `empty_guest_name` — пустое имя Гостя (422);
+// - `empty_guest_contact` — пустой контакт Гостя (422);
+// - `starts_at_in_past` — время начала Записи в прошлом (422);
+// - `outside_booking_window` — начало вне Окна записи — 14 календарных
+// дней со следующего дня (422);
+// - `outside_working_hours` — начало вне Рабочих часов или Запись
+// не вписывается в них целиком с учётом Длительности звонка (422);
+// - `start_not_on_grid` — старт не на сетке Слотов: не кратен 15 минутам
+// от начала Рабочих часов (422);
+// - `slot_taken` — время пересекается с активной Записью любого
+// Типа звонка (409).
 type ErrorBody struct {
 	// Code Machine-readable код ошибки.
 	Code string `json:"code"`
@@ -97,6 +159,9 @@ type SlotList struct {
 // CreateCallTypeJSONRequestBody defines body for CreateCallType for application/json ContentType.
 type CreateCallTypeJSONRequestBody = CreateCallTypeRequest
 
+// CreateCallJSONRequestBody defines body for CreateCall for application/json ContentType.
+type CreateCallJSONRequestBody = CreateCallRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -108,6 +173,9 @@ type ServerInterface interface {
 
 	// (GET /api/call-types/{id}/slots)
 	ListSlots(w http.ResponseWriter, r *http.Request, id string)
+
+	// (POST /api/calls)
+	CreateCall(w http.ResponseWriter, r *http.Request)
 
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -167,6 +235,20 @@ func (siw *ServerInterfaceWrapper) ListSlots(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSlots(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCall operation middleware
+func (siw *ServerInterfaceWrapper) CreateCall(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCall(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -313,6 +395,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types", wrapper.ListCallTypes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/call-types", wrapper.CreateCallType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types/{id}/slots", wrapper.ListSlots)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/calls", wrapper.CreateCall)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.Health)
 
 	return m
@@ -425,6 +508,56 @@ func (response ListSlots404JSONResponse) VisitListSlotsResponse(w http.ResponseW
 	return err
 }
 
+type CreateCallRequestObject struct {
+	Body *CreateCallJSONRequestBody
+}
+
+type CreateCallResponseObject interface {
+	VisitCreateCallResponse(w http.ResponseWriter) error
+}
+
+type CreateCall201JSONResponse Call
+
+func (response CreateCall201JSONResponse) VisitCreateCallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCall409JSONResponse ErrorBody
+
+func (response CreateCall409JSONResponse) VisitCreateCallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCall422JSONResponse ErrorBody
+
+func (response CreateCall422JSONResponse) VisitCreateCallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type HealthRequestObject struct {
 }
 
@@ -457,6 +590,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/call-types/{id}/slots)
 	ListSlots(ctx context.Context, request ListSlotsRequestObject) (ListSlotsResponseObject, error)
+
+	// (POST /api/calls)
+	CreateCall(ctx context.Context, request CreateCallRequestObject) (CreateCallResponseObject, error)
 
 	// (GET /health)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
@@ -575,6 +711,37 @@ func (sh *strictHandler) ListSlots(w http.ResponseWriter, r *http.Request, id st
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListSlotsResponseObject); ok {
 		if err := validResponse.VisitListSlotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCall operation middleware
+func (sh *strictHandler) CreateCall(w http.ResponseWriter, r *http.Request) {
+	var request CreateCallRequestObject
+
+	var body CreateCallJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCall(ctx, request.(CreateCallRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCall")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCallResponseObject); ok {
+		if err := validResponse.VisitCreateCallResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

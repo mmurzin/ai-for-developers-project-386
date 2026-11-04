@@ -9,6 +9,9 @@ import type {
 } from "./client"
 import { client } from "./client.gen"
 import type {
+  CreateCallData,
+  CreateCallErrors,
+  CreateCallResponses,
   CreateCallTypeData,
   CreateCallTypeErrors,
   CreateCallTypeResponses,
@@ -83,6 +86,29 @@ export const listSlots = <ThrowOnError extends boolean = false>(
     ListSlotsErrors,
     ThrowOnError
   >({ url: "/api/call-types/{id}/slots", ...options })
+
+/**
+ * Создать Запись (Гость) на выбранный Слот: длительность — из Типа
+ * звонка. Пересечение с активной Записью любого Типа звонка — 409;
+ * ошибки данных (неизвестный тип, пустые имя/контакт, прошлое,
+ * вне Окна записи или Рабочих часов, старт не на сетке, кривая дата)
+ * — 422 с machine-readable кодом.
+ */
+export const createCall = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCallData, ThrowOnError>
+): RequestResult<CreateCallResponses, CreateCallErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateCallResponses,
+    CreateCallErrors,
+    ThrowOnError
+  >({
+    url: "/api/calls",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
 
 /**
  * Проверка живости сервиса.
