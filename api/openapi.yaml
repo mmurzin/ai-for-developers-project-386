@@ -167,7 +167,7 @@ components:
           description: Идентификатор Типа звонка, на который создана Запись.
         callTypeName:
           type: string
-          description: Название Типа звонка на момент брони (для показа Гостю и Владельцу).
+          description: Название Типа звонка на момент создания Записи (для показа Гостю и Владельцу).
         durationMinutes:
           type: integer
           format: int32
@@ -228,7 +228,7 @@ components:
           description: Название для отображения Гостю.
         description:
           type: string
-          description: Описание вида Звонка.
+          description: Описание Типа звонка.
         durationMinutes:
           type: integer
           format: int32
@@ -268,9 +268,9 @@ components:
           description: 'Контакт Гостя: как связаться по поводу Звонка.'
       description: |-
         Данные для создания Записи (Гость). Длительность не передаётся:
-        она берётся из Типа звонка, endsAt вычисляет сервер. Бронировать
-        нужно Слот: начало — на сетке стартов внутри Рабочих часов
-        и Окна записи, без пересечения с активными Записями.
+        она берётся из Типа звонка, endsAt вычисляет сервер. Запись
+        создаётся на выбранный Слот: начало — на сетке стартов внутри
+        Рабочих часов и Окна записи, без пересечения с активными Записями.
     CreateCallTypeRequest:
       type: object
       required:
@@ -287,7 +287,7 @@ components:
           description: Название для отображения Гостю.
         description:
           type: string
-          description: Описание вида Звонка.
+          description: Описание Типа звонка.
         durationMinutes:
           type: integer
           format: int32
