@@ -7,7 +7,7 @@
 Все инструменты (go 1.26, node 24, pnpm, golangci-lint, gotestsum, oapi-codegen, go-arch-lint) закреплены в `mise.toml`. Запуск задач — только `mise run <задача>` (`mise tasks` — список). Если голые `go`/`pnpm` недоступны — нет активации mise (`eval "$(mise activate zsh)"`); системный node — старый (18), не использовать.
 
 - `mise run dev` — бэкенд + фронтенд параллельно; бэкенд `:8080` (переопределение через `PORT`, healthcheck `/health`), фронт `:5173` (`strictPort`), dev-прокси `/api` и `/health` → `:8080`
-- `mise run check` — полный прогон проверок одной командой: lint + тесты Go + тесты фронта
+- `mise run check` — полный прогон проверок одной командой: lint + тесты Go + тесты фронта + дрейф-контроль `api-check` (регенерация и сверка с коммитом)
 - `mise run lint` — golangci-lint (Go) + eslint (фронтенд), обе части обязательны к зелёному
 - `mise run test` — gotestsum; один тест: `mise x -- go test ./tests/smoke/ -v -run TestAppStartup`
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
@@ -16,7 +16,7 @@
 - `mise run generate` — весь design-first пайплайн: `api/**/*.tsp` → `api/openapi.yaml` (tsp) → `internal/api/openapi.gen.go` (oapi-codegen) → `frontend/src/api/` (hey-api). См. секцию «API: design-first»
 - `mise run api-check` — дрейф-контроль: регенерирует всё и роняет `git diff --exit-code`, если закоммиченные артефакты не соответствуют `.tsp` (в CI — отдельный шаг)
 - `mise run api-install` — pnpm install внутри `api/` (не обязателен: pnpm 12 сам доустанавливает перед run-скриптами)
-- Git-хуки: один раз на клон `git config core.hooksPath .githooks` — pre-commit ловит gofmt и билд-артефакт вместо placeholder в `internal/web/dist/index.html`
+- Git-хуки: один раз на клон `git config core.hooksPath .githooks` — pre-commit ловит gofmt и билд-артефакт вместо placeholder в `internal/web/dist/index.html`; commit-msg проверяет заголовок (тип, русское описание, `(#N)` для реализации)
 
 ## Конвенции
 
@@ -34,6 +34,7 @@
 - Сгенерированные артефакты коммитим сознательно: Go-билд и фронт не зависят от node/tsp, диф контракта виден в PR, дрейф ловит `mise run api-check` (в CI)
 - `/health` описан в контракте, но живёт вне `/api` (инфраструктурный); catch-all `GET /api/` → 404 и SPA-фолбэк — ручные, вне кодгена
 - Новая ручка: правишь `.tsp` → `mise run generate` → реализуешь метод в `internal/api/` → коммитишь контракт и артефакты одним коммитом
+- Рабочий синтаксис версий кодгена (tsp 1.17 / oapi-codegen 2.8 / hey-api 0.99) и их грабли: [docs/agents/design-first-pipeline.md](docs/agents/design-first-pipeline.md)
 
 ## Коммиты
 
@@ -49,6 +50,7 @@
 - Фичи спеки делаются через `/implement-spec` **одной веткой на спеку** (#14–#17 — одна ветка), тикеты выполняются по очереди; коммиты внутри ссылаются на свой тикет `(#N)`
 - Финальный PR спеки мерджится **merge-commit**'ом, не squash — squash схлопнул бы ссылки на тикеты в один коммит. Перед мерджем — общее ревью всей ветки (`/code-review`)
 - Мелкие chore/docs — короткой веткой + PR (merge-commit) или прямым коммитом в main
+- Меняешь принятое решение (правила записи, окно, часы, процесс) — в том же PR обнови карту решений #13, спеку #6 и GLOSSARY.md
 - Релизы: **release-please** (`.github/workflows/release-please.yml` + `release-please-config.json`) следит за main и копит conventional-коммиты в release-PR (бамп версий в `frontend/package.json` и `api/package.json` через extra-files + секция в CHANGELOG.md). Мердж release-PR = тег `vX.Y.Z` + GitHub Release
 - Первый релиз — `v0.1.0` (опция `release-as` в конфиге); после его выхода `release-as` убрать, дальше версии считает история коммитов
 - Требование «одна команда проверок» закрывается `mise run check`: lint + тесты Go + тесты фронта + браузерный сценарий Playwright с настоящим сервером (без подмены ответов API)

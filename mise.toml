@@ -13,7 +13,7 @@ depends = ["run", "frontend-dev"]
 run = "echo 'бэк: http://localhost:8080/health — фронт: http://localhost:5173'"
 
 [tasks.check]
-run = ["mise run lint", "mise run test", "mise run frontend-test"]
+run = ["mise run lint", "mise run test", "mise run frontend-test", "mise run api-check"]
 
 [tasks.api-install]
 dir = "api"
