@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
@@ -60,7 +61,8 @@ type CreateCallTypeRequest struct {
 // - `empty_id` — пустой идентификатор Типа звонка (422);
 // - `empty_name` — пустое название Типа звонка (422);
 // - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
-// - `duplicate_id` — идентификатор Типа звонка уже существует (409).
+// - `duplicate_id` — идентификатор Типа звонка уже существует (409);
+// - `call_type_not_found` — Тип звонка по идентификатору не найден (404).
 type ErrorBody struct {
 	// Code Machine-readable код ошибки.
 	Code string `json:"code"`
@@ -75,6 +77,23 @@ type HealthStatus struct {
 	Status string `json:"status"`
 }
 
+// Slot Слот: свободное место для Звонка внутри Окна записи и Рабочих часов,
+// вмещающее Звонок выбранного Типа звонка целиком (GLOSSARY.md).
+// Вычисляется на лету, не хранится.
+type Slot struct {
+	// EndsAt Конец Слота: начало плюс Длительность звонка Типа звонка.
+	EndsAt time.Time `json:"endsAt"`
+
+	// StartsAt Начало Слота; ISO 8601 с явным смещением часового пояса.
+	StartsAt time.Time `json:"startsAt"`
+}
+
+// SlotList Список Слотов Типа звонка на Окно записи.
+type SlotList struct {
+	// Items Свободные Слоты внутри Окна записи, по порядку времени.
+	Items []Slot `json:"items"`
+}
+
 // CreateCallTypeJSONRequestBody defines body for CreateCallType for application/json ContentType.
 type CreateCallTypeJSONRequestBody = CreateCallTypeRequest
 
@@ -86,6 +105,9 @@ type ServerInterface interface {
 
 	// (POST /api/call-types)
 	CreateCallType(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/call-types/{id}/slots)
+	ListSlots(w http.ResponseWriter, r *http.Request, id string)
 
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -119,6 +141,32 @@ func (siw *ServerInterfaceWrapper) CreateCallType(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateCallType(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSlots operation middleware
+func (siw *ServerInterfaceWrapper) ListSlots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSlots(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -264,6 +312,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types", wrapper.ListCallTypes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/call-types", wrapper.CreateCallType)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/call-types/{id}/slots", wrapper.ListSlots)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.Health)
 
 	return m
@@ -340,6 +389,42 @@ func (response CreateCallType422JSONResponse) VisitCreateCallTypeResponse(w http
 	return err
 }
 
+type ListSlotsRequestObject struct {
+	Id string `json:"id"`
+}
+
+type ListSlotsResponseObject interface {
+	VisitListSlotsResponse(w http.ResponseWriter) error
+}
+
+type ListSlots200JSONResponse SlotList
+
+func (response ListSlots200JSONResponse) VisitListSlotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSlots404JSONResponse ErrorBody
+
+func (response ListSlots404JSONResponse) VisitListSlotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type HealthRequestObject struct {
 }
 
@@ -369,6 +454,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/call-types)
 	CreateCallType(ctx context.Context, request CreateCallTypeRequestObject) (CreateCallTypeResponseObject, error)
+
+	// (GET /api/call-types/{id}/slots)
+	ListSlots(ctx context.Context, request ListSlotsRequestObject) (ListSlotsResponseObject, error)
 
 	// (GET /health)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
@@ -461,6 +549,32 @@ func (sh *strictHandler) CreateCallType(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateCallTypeResponseObject); ok {
 		if err := validResponse.VisitCreateCallTypeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSlots operation middleware
+func (sh *strictHandler) ListSlots(w http.ResponseWriter, r *http.Request, id string) {
+	var request ListSlotsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSlots(ctx, request.(ListSlotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSlots")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSlotsResponseObject); ok {
+		if err := validResponse.VisitListSlotsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

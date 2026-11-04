@@ -68,7 +68,8 @@ export type CreateCallTypeRequest = {
  * - `empty_id` — пустой идентификатор Типа звонка (422);
  * - `empty_name` — пустое название Типа звонка (422);
  * - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
- * - `duplicate_id` — идентификатор Типа звонка уже существует (409).
+ * - `duplicate_id` — идентификатор Типа звонка уже существует (409);
+ * - `call_type_not_found` — Тип звонка по идентификатору не найден (404).
  */
 export type ErrorBody = {
   /**
@@ -89,6 +90,32 @@ export type HealthStatus = {
    * Текущее состояние; живой сервис отвечает "ok".
    */
   status: string
+}
+
+/**
+ * Слот: свободное место для Звонка внутри Окна записи и Рабочих часов,
+ * вмещающее Звонок выбранного Типа звонка целиком (GLOSSARY.md).
+ * Вычисляется на лету, не хранится.
+ */
+export type Slot = {
+  /**
+   * Начало Слота; ISO 8601 с явным смещением часового пояса.
+   */
+  startsAt: string
+  /**
+   * Конец Слота: начало плюс Длительность звонка Типа звонка.
+   */
+  endsAt: string
+}
+
+/**
+ * Список Слотов Типа звонка на Окно записи.
+ */
+export type SlotList = {
+  /**
+   * Свободные Слоты внутри Окна записи, по порядку времени.
+   */
+  items: Array<Slot>
 }
 
 export type ListCallTypesData = {
@@ -121,7 +148,7 @@ export type CreateCallTypeErrors = {
    */
   409: ErrorBody
   /**
-   * Ошибка валидации данных запроса.
+   * Ошибка валидации данных запроса.Ошибка валидации данных запроса.
    */
   422: ErrorBody
 }
@@ -138,6 +165,33 @@ export type CreateCallTypeResponses = {
 
 export type CreateCallTypeResponse =
   CreateCallTypeResponses[keyof CreateCallTypeResponses]
+
+export type ListSlotsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/api/call-types/{id}/slots"
+}
+
+export type ListSlotsErrors = {
+  /**
+   * Ресурс не найден.
+   */
+  404: ErrorBody
+}
+
+export type ListSlotsError = ListSlotsErrors[keyof ListSlotsErrors]
+
+export type ListSlotsResponses = {
+  /**
+   * The request has succeeded.
+   */
+  200: SlotList
+}
+
+export type ListSlotsResponse = ListSlotsResponses[keyof ListSlotsResponses]
 
 export type HealthData = {
   body?: never

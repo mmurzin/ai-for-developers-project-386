@@ -36,7 +36,8 @@ op health(): HealthStatus;
  * - `empty_id` — пустой идентификатор Типа звонка (422);
  * - `empty_name` — пустое название Типа звонка (422);
  * - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
- * - `duplicate_id` — идентификатор Типа звонка уже существует (409).
+ * - `duplicate_id` — идентификатор Типа звонка уже существует (409);
+ * - `call_type_not_found` — Тип звонка по идентификатору не найден (404).
  */
 model ErrorBody {
   /**
@@ -61,8 +62,19 @@ model ConflictError extends ConflictResponse {
 /**
  * Ошибка валидации данных запроса.
  */
+/**
+ * Ошибка валидации данных запроса.
+ */
 @error
 model ValidationError extends Response<422> {
+  @body body: ErrorBody;
+}
+
+/**
+ * Ресурс не найден.
+ */
+@error
+model NotFoundError extends NotFoundResponse {
   @body body: ErrorBody;
 }
 
@@ -148,3 +160,41 @@ op createCallType(@body body: CreateCallTypeRequest): CallTypeCreated | Conflict
 @route("/api/call-types")
 @get
 op listCallTypes(): CallTypeList;
+
+// ---------- Слоты ----------
+
+/**
+ * Слот: свободное место для Звонка внутри Окна записи и Рабочих часов,
+ * вмещающее Звонок выбранного Типа звонка целиком (GLOSSARY.md).
+ * Вычисляется на лету, не хранится.
+ */
+model Slot {
+  /**
+   * Начало Слота; ISO 8601 с явным смещением часового пояса.
+   */
+  startsAt: offsetDateTime;
+
+  /**
+   * Конец Слота: начало плюс Длительность звонка Типа звонка.
+   */
+  endsAt: offsetDateTime;
+}
+
+/**
+ * Список Слотов Типа звонка на Окно записи.
+ */
+model SlotList {
+  /**
+   * Свободные Слоты внутри Окна записи, по порядку времени.
+   */
+  items: Slot[];
+}
+
+/**
+ * Слоты Типа звонка (публично: их видит Гость): вычисленная сетка
+ * на Окно записи — 14 календарных дней со следующего дня,
+ * Рабочие часы 9:00–18:00 Europe/Moscow, старты каждые 15 минут.
+ */
+@route("/api/call-types/{id}/slots")
+@get
+op listSlots(id: string): SlotList | NotFoundError;
