@@ -8,7 +8,15 @@ import type {
   TDataShape,
 } from "./client"
 import { client } from "./client.gen"
-import type { HealthData, HealthResponses } from "./types.gen"
+import type {
+  CreateCallTypeData,
+  CreateCallTypeErrors,
+  CreateCallTypeResponses,
+  HealthData,
+  HealthResponses,
+  ListCallTypesData,
+  ListCallTypesResponses,
+} from "./types.gen"
 
 export type Options<
   TData extends TDataShape = TDataShape,
@@ -27,6 +35,37 @@ export type Options<
    */
   meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta
 }
+
+/**
+ * Список Типов звонков (публично: их видит Гость).
+ */
+export const listCallTypes = <ThrowOnError extends boolean = false>(
+  options?: Options<ListCallTypesData, ThrowOnError>
+): RequestResult<ListCallTypesResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListCallTypesResponses,
+    unknown,
+    ThrowOnError
+  >({ url: "/api/call-types", ...options })
+
+/**
+ * Создать Тип звонка (Владелец страницы).
+ */
+export const createCallType = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCallTypeData, ThrowOnError>
+): RequestResult<CreateCallTypeResponses, CreateCallTypeErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateCallTypeResponses,
+    CreateCallTypeErrors,
+    ThrowOnError
+  >({
+    url: "/api/call-types",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
 
 /**
  * Проверка живости сервиса.

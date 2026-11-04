@@ -5,6 +5,83 @@ export type ClientOptions = {
 }
 
 /**
+ * Тип звонка: набор параметров, который задаёт Владелец страницы.
+ */
+export type CallType = {
+  /**
+   * Идентификатор: строковый, задаёт Владелец страницы.
+   */
+  id: string
+  /**
+   * Название для отображения Гостю.
+   */
+  name: string
+  /**
+   * Описание вида Звонка.
+   */
+  description: string
+  /**
+   * Длительность звонка в минутах: целое от 5 до 240.
+   */
+  durationMinutes: number
+}
+
+/**
+ * Список Типов звонков.
+ */
+export type CallTypeList = {
+  /**
+   * Созданные Типы звонков.
+   */
+  items: Array<CallType>
+}
+
+/**
+ * Данные для создания Типа звонка.
+ */
+export type CreateCallTypeRequest = {
+  /**
+   * Идентификатор: строковый, задаёт Владелец страницы.
+   */
+  id: string
+  /**
+   * Название для отображения Гостю.
+   */
+  name: string
+  /**
+   * Описание вида Звонка.
+   */
+  description: string
+  /**
+   * Длительность звонка в минутах: целое от 5 до 240.
+   */
+  durationMinutes: number
+}
+
+/**
+ * Тело ошибки: machine-readable код + сообщение для человека.
+ *
+ * Коды (snake_case), используемые сервисом:
+ * - `malformed_json` — тело запроса не является корректным JSON (400);
+ * - `invalid_field_type` — поле запроса имеет неверный тип,
+ * например нецелая длительность (422);
+ * - `empty_id` — пустой идентификатор Типа звонка (422);
+ * - `empty_name` — пустое название Типа звонка (422);
+ * - `duration_out_of_range` — Длительность звонка вне 5–240 минут (422);
+ * - `duplicate_id` — идентификатор Типа звонка уже существует (409).
+ */
+export type ErrorBody = {
+  /**
+   * Machine-readable код ошибки.
+   */
+  code: string
+  /**
+   * Сообщение для человека.
+   */
+  message: string
+}
+
+/**
  * Ответ проверки живости сервиса.
  */
 export type HealthStatus = {
@@ -13,6 +90,54 @@ export type HealthStatus = {
    */
   status: string
 }
+
+export type ListCallTypesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/call-types"
+}
+
+export type ListCallTypesResponses = {
+  /**
+   * The request has succeeded.
+   */
+  200: CallTypeList
+}
+
+export type ListCallTypesResponse =
+  ListCallTypesResponses[keyof ListCallTypesResponses]
+
+export type CreateCallTypeData = {
+  body: CreateCallTypeRequest
+  path?: never
+  query?: never
+  url: "/api/call-types"
+}
+
+export type CreateCallTypeErrors = {
+  /**
+   * Дубликат идентификатора Типа звонка.
+   */
+  409: ErrorBody
+  /**
+   * Ошибка валидации данных запроса.
+   */
+  422: ErrorBody
+}
+
+export type CreateCallTypeError =
+  CreateCallTypeErrors[keyof CreateCallTypeErrors]
+
+export type CreateCallTypeResponses = {
+  /**
+   * Тип звонка создан.
+   */
+  201: CallType
+}
+
+export type CreateCallTypeResponse =
+  CreateCallTypeResponses[keyof CreateCallTypeResponses]
 
 export type HealthData = {
   body?: never

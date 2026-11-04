@@ -6,13 +6,14 @@
 
 Все инструменты (go 1.26, node 24, pnpm, golangci-lint, gotestsum, oapi-codegen, go-arch-lint) закреплены в `mise.toml`. Запуск задач — только `mise run <задача>` (`mise tasks` — список). Если голые `go`/`pnpm` недоступны — нет активации mise (`eval "$(mise activate zsh)"`); системный node — старый (18), не использовать.
 
-- `mise run dev` — бэкенд + фронтенд параллельно; бэкенд `:8080` (переопределение через `PORT`, healthcheck `/health`), фронт `:5173` (`strictPort`), dev-прокси `/api` и `/health` → `:8080`
-- `mise run check` — полный прогон проверок одной командой: lint + тесты Go + тесты фронта + дрейф-контроль `api-check` (регенерация и сверка с коммитом)
+- `mise run dev` — бэкенд + фронтенд параллельно; бэкенд `:8080` (переопределение через `PORT`, healthcheck `/health`), SQLite-файл через `DB_PATH` (дефолт `calls.db` в cwd), фронт `:5173` (`strictPort`), dev-прокси `/api` и `/health` → `:8080`
+- `mise run check` — полный прогон проверок одной командой: lint + тесты Go + тесты фронта + браузерный сценарий `e2e` (Playwright против собранного бинаря с embed-фронтом) + дрейф-контроль `api-check` (регенерация и сверка с коммитом)
 - `mise run lint` — golangci-lint (Go) + eslint (фронтенд), обе части обязательны к зелёному
 - `mise run test` — gotestsum; один тест: `mise x -- go test ./tests/smoke/ -v -run TestAppStartup`
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
+- `mise run e2e` — Playwright-сценарии из `e2e/` против настоящего сервера: собирает прод-бинарь целиком (фронт → embed → `go build`), поднимает его на `:8099` с throwaway-базой `tmp/e2e.db` (каждый прогон на чистой). `e2e-install` — установка браузеров (идемпотентно, no-op если на месте); `e2e-junit` — то же с junit-отчётом в `reports/`
 - `mise run build` — прод-бинарь целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`)
-- `mise run test-junit` / `frontend-test-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
+- `mise run test-junit` / `frontend-test-junit` / `e2e-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
 - `mise run generate` — весь design-first пайплайн: `api/**/*.tsp` → `api/openapi.yaml` (tsp) → `internal/api/openapi.gen.go` (oapi-codegen) → `frontend/src/api/` (hey-api). См. секцию «API: design-first»
 - `mise run api-check` — дрейф-контроль: регенерирует всё и роняет `git diff --exit-code`, если закоммиченные артефакты не соответствуют `.tsp` (в CI — отдельный шаг)
 - `mise run api-install` — pnpm install внутри `api/` (не обязателен: pnpm 12 сам доустанавливает перед run-скриптами)
@@ -20,7 +21,8 @@
 
 ## Конвенции
 
-- Бэкенд — только stdlib (net/http, mux Go 1.22+), без chi/gin. Новые ручки вешать под префикс `/api/...` — от этого зависит vite-прокси без правок конфига. Сгенерированный oapi-codegen роутинг тоже stdlib-паттернами (`"GET /health"`), конвенция не нарушается
+- Бэкенд — stdlib-роутинг (net/http, mux Go 1.22+), без chi/gin. Новые ручки вешать под префикс `/api/...` — от этого зависит vite-прокси без правок конфига. Сгенерированный oapi-codegen роутинг тоже stdlib-паттернами (`"GET /health"`), конвенция не нарушается
+- Go-зависимости вне stdlib — только осознанные: `modernc.org/sqlite` (хранилище, ADR-0001) и `github.com/oapi-codegen/runtime` (требуется сгенерированным кодом с телами/параметрами). Новые добавлять через ADR
 - Зависимости фронта ставить pnpm внутри `frontend/`. Корень репо не должен становиться npm-пакетом (никаких package.json/node_modules в корне)
 - Frontend: React 19 + TS + Tailwind 4 + shadcn (base: radix). Компоненты добавлять через shadcn MCP (opencode.json) или `pnpm dlx shadcn@latest add <имя>` из `frontend/`
 - Тесты фронта: vitest + RTL + jest-dom, jsdom, setup `src/test/setup.ts`; импорты `{ test, expect }` из vitest явно (globals не включены)
@@ -57,7 +59,11 @@
 
 ## Тесты
 
-`tests/smoke/` — black-box: сам собирает бинарь (`go build ./cmd/server`), запускает на случайном свободном порту, опрашивает `/health` и `/` (index из embed). Не конфликтует с работающими dev-серверами; при правке пути/порта/health-роута учесть.
+`tests/smoke/` — black-box: сам собирает бинарь (`go build ./cmd/server`), запускает на случайном свободном порту со throwaway-базой (`DB_PATH` во временный файл), опрашивает `/health` и `/` (index из embed). Не конфликтует с работающими dev-серверами; при правке пути/порта/health-роута учесть.
+
+API-тесты — в `internal/server/` (httptest через реальный монтаж сервера с throwaway SQLite): проверяют внешнее поведение — статусы и тела, включая персистентность (новый сервер на том же файле базы).
+
+`e2e/` — браузерные сценарии Playwright (см. «Грабли»): запускаются только mise-задачами (`e2e`/`e2e-junit`), которые сначала собирают прод-бинарь.
 
 ## Линтеры: нестандартное
 
@@ -75,7 +81,8 @@
 - pnpm 12 сам доустанавливает зависимости перед `pnpm run <скрипт>` (на этом работает CI без явных install-шагов), но **не** перед `pnpm exec` — в mise-задачах вызывать скрипты через `pnpm --dir <пакет> run <скрипт>`, а не `pnpm exec <бинарь>`
 - release-please работает на GITHUB_TOKEN: созданные им теги и релизы **не триггерят** другие воркфлоу (ограничение GitHub). Когда появится деплой по тегам — перейти на PAT/fine-grained token в секрете
 - `internal/web/dist/index.html` — закоммиченный placeholder: без него `go:embed all:dist` не собирается на свежем чекауте. После `mise run build` этот файл заменяется реальным index из билда и висит «грязным» в git — это ожидаемо; не коммитить его попутно с фичами (вернуть: `git checkout -- internal/web/dist/index.html`)
-- CI: junit-задачи дублируют обычные test/frontend-test с отчётами; если меняете состав `check`, mirrors в `.github/workflows/ci.yml` (lint + junit-варианты + upload-artifact)
+- CI: junit-задачи дублируют обычные test/frontend-test с отчётами; если меняете состав `check`, mirrors в `.github/workflows/ci.yml` (lint + junit-варианты + браузеры + e2e-junit + upload-artifact)
+- Playwright (проверено на практике): конфиг `e2e/playwright.config.ts` — голый объект **без импорта** `@playwright/test` (конфиг грузится обычным require, маппинг имён работает только для файлов тестов); `webServer` исполняется с cwd директории конфига — в конфиге задан `cwd: ".."`, пути в команде относительны корня репо; junit-выход — только через env `PLAYWRIGHT_JUNIT_OUTPUT_NAME` (CLI-флага нет), путь абсолютный; `e2e/` живёт без package.json — корень репо npm-пакетом не становится
 - CI/деплой: go:embed и junit уже есть; деплоя по тегам и systemd на VPS по-прежнему нет — не предполагать, что это уже работает
 
 ## Agent skills

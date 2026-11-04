@@ -15,6 +15,9 @@ export function Home() {
             </Button>
           ))}
         </div>
+        <Link to="/admin" className="text-muted-foreground underline-offset-4 text-sm hover:underline">
+          Управление типами звонков
+        </Link>
       </div>
     </div>
   )
