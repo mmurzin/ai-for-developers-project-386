@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -20,12 +21,28 @@ var ErrDuplicate = errors.New("duplicate id")
 // Хендлеры API маппят её в 404.
 var ErrNotFound = errors.New("not found")
 
+// ErrConflict — семантическая ошибка «время пересекается с активной
+// Записью». Хендлеры API маппят её в 409, не зная деталей проверки.
+var ErrConflict = errors.New("time slot conflict")
+
 // CallType — Тип звонка: параметры, которые задаёт Владелец страницы (GLOSSARY.md).
 type CallType struct {
 	ID              string
 	Name            string
 	Description     string
 	DurationMinutes int32
+}
+
+// Call — Запись: забронированный Звонок Гостя (GLOSSARY.md).
+// Времена в памяти — time.Time; на диске — TEXT в UTC (RFC 3339),
+// нормализация — в formatUTC при записи.
+type Call struct {
+	ID           int64
+	CallTypeID   string
+	StartsAt     time.Time
+	EndsAt       time.Time
+	GuestName    string
+	GuestContact string
 }
 
 // Store — хранилище поверх одного файла SQLite.
@@ -44,6 +61,15 @@ CREATE TABLE IF NOT EXISTS call_types (
   description      TEXT NOT NULL,
   duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 5 AND duration_minutes <= 240)
 );
+CREATE TABLE IF NOT EXISTS calls (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  call_type_id  TEXT NOT NULL REFERENCES call_types(id),
+  starts_at     TEXT NOT NULL,
+  ends_at       TEXT NOT NULL,
+  guest_name    TEXT NOT NULL,
+  guest_contact TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_calls_starts ON calls(starts_at, ends_at);
 `
 
 // Open открывает (или создаёт) базу по пути и накатывает миграцию.
@@ -143,4 +169,96 @@ func isUniqueViolation(err error) bool {
 	}
 	return se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY ||
 		se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+}
+
+// formatUTC — канонический TEXT-вид времени в базе: RFC 3339 в UTC.
+// Единый формат делает лексикографический порядок строк хронологическим,
+// поэтому пересечения полуоткрытых интервалов ищутся сравнением строк.
+func formatUTC(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+// CreateCall атомарно бронирует Запись: транзакция сразу берёт
+// писательский лок (_txlock=immediate в DSN), внутри неё — COUNT
+// пересечений с активными Записями и INSERT. Пересечение с Записью
+// любого Типа звонка — ErrConflict: интервалы полуоткрытые
+// [начало, конец), примыкание («конец в 11:00 / начало в 11:00»)
+// пересечением не считается. При одновременных бронях одного времени
+// проходит ровно одна — остальные ждут лока и видят её в COUNT.
+func (s *Store) CreateCall(ctx context.Context, call Call) (Call, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Call{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Пересечение [aStart, aEnd) с [bStart, bEnd):
+	// aStart < bEnd AND aEnd > bStart (заметки к #16, §5).
+	var overlapping int
+	err = tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM calls WHERE starts_at < ? AND ends_at > ?`,
+		formatUTC(call.EndsAt), formatUTC(call.StartsAt),
+	).Scan(&overlapping)
+	if err != nil {
+		return Call{}, fmt.Errorf("count overlapping calls: %w", err)
+	}
+	if overlapping > 0 {
+		return Call{}, ErrConflict
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO calls (call_type_id, starts_at, ends_at, guest_name, guest_contact)
+		 VALUES (?, ?, ?, ?, ?)`,
+		call.CallTypeID, formatUTC(call.StartsAt), formatUTC(call.EndsAt),
+		call.GuestName, call.GuestContact,
+	)
+	if err != nil {
+		return Call{}, fmt.Errorf("insert call: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Call{}, fmt.Errorf("insert call id: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Call{}, fmt.Errorf("commit call: %w", err)
+	}
+
+	call.ID = id
+	return call, nil
+}
+
+// ListCallsInRange возвращает активные Записи, чей интервал
+// [начало, конец) пересекается с [from, to). Порядок — по началу.
+// Нужна для вычета занятости из computed-Слотов.
+func (s *Store) ListCallsInRange(ctx context.Context, from, to time.Time) ([]Call, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, call_type_id, starts_at, ends_at, guest_name, guest_contact
+		 FROM calls WHERE starts_at < ? AND ends_at > ? ORDER BY starts_at`,
+		formatUTC(to), formatUTC(from),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("select calls in range: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var calls []Call
+	for rows.Next() {
+		var call Call
+		var startsAt, endsAt string
+		if err := rows.Scan(&call.ID, &call.CallTypeID, &startsAt, &endsAt,
+			&call.GuestName, &call.GuestContact); err != nil {
+			return nil, fmt.Errorf("scan call: %w", err)
+		}
+		if call.StartsAt, err = time.Parse(time.RFC3339, startsAt); err != nil {
+			return nil, fmt.Errorf("parse starts_at %q: %w", startsAt, err)
+		}
+		if call.EndsAt, err = time.Parse(time.RFC3339, endsAt); err != nil {
+			return nil, fmt.Errorf("parse ends_at %q: %w", endsAt, err)
+		}
+		calls = append(calls, call)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate calls: %w", err)
+	}
+	return calls, nil
 }

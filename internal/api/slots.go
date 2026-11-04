@@ -47,7 +47,8 @@ func NewSlotsAPI(store *storage.Store, now func() time.Time) SlotsAPI {
 }
 
 // ListSlots отдаёт Слоты Типа звонка на Окно записи (публичная ручка):
-// 200 с computed-сеткой, 404 для неизвестного идентификатора типа.
+// 200 с computed-сеткой (минус активные Записи), 404 для неизвестного
+// идентификатора типа.
 func (a SlotsAPI) ListSlots(ctx context.Context, request ListSlotsRequestObject) (ListSlotsResponseObject, error) {
 	ct, err := a.store.GetCallType(ctx, request.Id)
 	switch {
@@ -60,7 +61,47 @@ func (a SlotsAPI) ListSlots(ctx context.Context, request ListSlotsRequestObject)
 		return nil, err
 	}
 
-	return ListSlots200JSONResponse(SlotList{Items: computeSlots(a.now(), ct.DurationMinutes)}), nil
+	// Занятость: активные Записи, пересекающиеся с Окном записи, —
+	// их интервалы вырезаются из сетки Слотов (GLOSSARY.md: Слот —
+	// свободное место). Записи всех Типов звонков: интервалы не
+	// пересекаются между собой, поэтому вычет один для всех типов.
+	windowStart, windowEnd := bookingWindowBounds(a.now())
+	busyCalls, err := a.store.ListCallsInRange(ctx, windowStart, windowEnd)
+	if err != nil {
+		return nil, err
+	}
+	busy := make([]busyInterval, 0, len(busyCalls))
+	for _, call := range busyCalls {
+		busy = append(busy, busyInterval{start: call.StartsAt, end: call.EndsAt})
+	}
+
+	return ListSlots200JSONResponse(SlotList{Items: computeSlots(a.now(), ct.DurationMinutes, busy)}), nil
+}
+
+// busyInterval — интервал активной Записи, вырезаемый из сетки Слотов.
+type busyInterval struct {
+	start time.Time
+	end   time.Time
+}
+
+// bookingWindowBounds — границы Окна записи от «сейчас»: от начала
+// Рабочих часов первого дня (завтра) до конца Рабочих часов последнего.
+func bookingWindowBounds(now time.Time) (time.Time, time.Time) {
+	today := now.In(instanceZone)
+	y, m, d := today.Date()
+	return time.Date(y, m, d+1, workStartHour, 0, 0, 0, instanceZone),
+		time.Date(y, m, d+bookingWindowDays, workEndHour, 0, 0, 0, instanceZone)
+}
+
+// overlapsBusy — пересекается ли [start, end) с каким-либо занятым
+// интервалом: полуоткрытые интервалы, примыкание — не пересечение.
+func overlapsBusy(start, end time.Time, busy []busyInterval) bool {
+	for _, b := range busy {
+		if b.start.Before(end) && b.end.After(start) {
+			return true
+		}
+	}
+	return false
 }
 
 // computeSlots вычисляет Слоты на Окно записи (чистая функция,
@@ -71,9 +112,10 @@ func (a SlotsAPI) ListSlots(ctx context.Context, request ListSlotsRequestObject)
 // выходные). Внутри каждого дня — Рабочие часы workStartHour–workEndHour:
 // старты идут по сетке slotStep от начала часа, Слот длится durationMinutes
 // и должен вмещаться целиком, поэтому последний старт — не позже,
-// чем за Длительность до конца Рабочих часов. Времена строятся в зоне
+// чем за Длительность до конца Рабочих часов. Старты, пересекающиеся
+// с активными Записями (busy), вырезаются. Времена строятся в зоне
 // инстанса: на границе API маршалятся в ISO 8601 со смещением зоны.
-func computeSlots(now time.Time, durationMinutes int32) []Slot {
+func computeSlots(now time.Time, durationMinutes int32, busy []busyInterval) []Slot {
 	duration := time.Duration(durationMinutes) * time.Minute
 
 	today := now.In(instanceZone)
@@ -84,7 +126,11 @@ func computeSlots(now time.Time, durationMinutes int32) []Slot {
 		workStart := time.Date(y, m, d+day, workStartHour, 0, 0, 0, instanceZone)
 		workEnd := time.Date(y, m, d+day, workEndHour, 0, 0, 0, instanceZone)
 		for start := workStart; !start.Add(duration).After(workEnd); start = start.Add(slotStep) {
-			slots = append(slots, Slot{StartsAt: start, EndsAt: start.Add(duration)})
+			end := start.Add(duration)
+			if overlapsBusy(start, end, busy) {
+				continue
+			}
+			slots = append(slots, Slot{StartsAt: start, EndsAt: end})
 		}
 	}
 	return slots

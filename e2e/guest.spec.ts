@@ -33,3 +33,50 @@ test("гость выбирает тип звонка и видит календ
   await expect(firstDaySlots.first()).toHaveText("09:00 (+03:00)")
   await expect(firstDaySlots.last()).toHaveText("17:30 (+03:00)")
 })
+
+// Сквозной сценарий #16: Гость выбирает Тип звонка, бронирует Слот
+// через форму (имя, контакт) и видит подтверждение с деталями Записи.
+// Забронированное время исчезает из Слотов. Тип сеется через API —
+// как и в сценарии #15 (409 допускаем, если тип уже создан).
+
+test("гость бронирует Слот и видит подтверждение", async ({ page, request }) => {
+  const created = await request.post("/api/call-types", {
+    data: {
+      id: "consult",
+      name: "Консультация",
+      description: "Разбор ваших задач",
+      durationMinutes: 30,
+    },
+  })
+  expect([201, 409]).toContain(created.status())
+
+  await page.goto("/")
+
+  await page.getByRole("link", { name: "Консультация — 30 минут" }).click()
+  await expect(page.getByRole("heading", { name: "Свободные Слоты" })).toBeVisible()
+
+  // Первый Слот первого дня Окна записи: 09:00 (+03:00).
+  const firstDay = page.getByTestId("slot-day").first()
+  await firstDay.getByRole("button", { name: "09:00 (+03:00)" }).click()
+
+  await page.getByLabel("Имя").fill("Миша")
+  await page.getByLabel("Контакт").fill("guest@example.com")
+  await page.getByRole("button", { name: "Записаться" }).click()
+
+  // Подтверждение с деталями Записи: тип, время, имя.
+  await expect(page.getByRole("heading", { name: "Запись подтверждена" })).toBeVisible()
+  const details = page.getByTestId("booking-details")
+  await expect(details).toContainText("Консультация")
+  await expect(details).toContainText("30 минут")
+  await expect(details).toContainText("09:00 (+03:00) – 09:30 (+03:00)")
+  await expect(details).toContainText("Миша")
+  await expect(details).toContainText("guest@example.com")
+
+  // Назад к календарю: забронированное время вырезано из Слотов.
+  // Бронь 09:00–09:30 убирает старты 09:00 и 09:15 (каждый заезжает
+  // в интервал), но не 09:30 — примыкающий справа.
+  await page.getByRole("button", { name: "Записаться ещё раз" }).click()
+  await expect(firstDay.getByRole("button", { name: "09:00 (+03:00)" })).toHaveCount(0)
+  await expect(firstDay.getByRole("button", { name: "09:15 (+03:00)" })).toHaveCount(0)
+  await expect(firstDay.getByRole("button", { name: "09:30 (+03:00)" })).toBeVisible()
+})
