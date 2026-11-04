@@ -16,6 +16,9 @@ linters:
         - name: package-comments
           disabled: true
   exclusions:
+    paths:
+      # код, сгенерированный oapi-codegen из api/openapi.yaml
+      - internal/api/.*\.gen\.go
     rules:
       - path: _test\.go
         linters:

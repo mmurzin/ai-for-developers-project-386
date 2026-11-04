@@ -48,3 +48,16 @@ func TestServerReturns404ForUnknownAPIRoutes(t *testing.T) {
 		t.Errorf("GET /api/nonexistent: status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+// Сгенерированный роутинг паттернами Go 1.22 должен отличать методы,
+// а не проваливать не-GET в SPA-фолбэк.
+func TestServerRejectsNonGetHealth(t *testing.T) {
+	srv := NewServer(":0")
+
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/health", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST /health: status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}

@@ -4,17 +4,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/mmurzin/ai-for-developers-project-386/internal/api"
 	"github.com/mmurzin/ai-for-developers-project-386/internal/web"
 )
 
 func NewServer(addr string) *http.Server {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	// Роуты из TypeSpec-контракта (api/main.tsp → api/openapi.yaml):
+	// типизированные strict-хендлеры, паттерны Go 1.22 на общем мухе.
+	api.HandlerWithOptions(
+		api.NewStrictHandler(api.HealthAPI{}, nil),
+		api.StdHTTPServerOptions{BaseRouter: mux},
+	)
 
 	mux.Handle("GET /", web.Handler())
 
