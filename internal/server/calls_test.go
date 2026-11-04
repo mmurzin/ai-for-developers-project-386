@@ -307,3 +307,65 @@ func TestCreateCallRaceSingleWinner(t *testing.T) {
 			created, conflicts, other, racers-1, statuses)
 	}
 }
+
+// bookedSlotStarts — множество стартов Слотов типа после брони.
+func bookedSlotStarts(t *testing.T, srv *http.Server, callTypeID string) map[string]bool {
+	t.Helper()
+
+	status, slots := getSlots(t, srv, callTypeID)
+	if status != http.StatusOK {
+		t.Fatalf("GET /api/call-types/%s/slots: status = %d, want %d", callTypeID, status, http.StatusOK)
+	}
+	starts := make(map[string]bool, len(slots))
+	for _, s := range slots {
+		starts[s.StartsAt] = true
+	}
+	return starts
+}
+
+func wantSlot(t *testing.T, starts map[string]bool, startsAt, context string, want bool) {
+	t.Helper()
+
+	if got := starts[startsAt]; got != want {
+		t.Errorf("%s: слот %s присутствует = %v, want %v", context, startsAt, got, want)
+	}
+}
+
+// Активные Записи вырезаются из Слотов — в том числе для типов другой
+// длительности на пересекающиеся времена: 60 минут с 10:00 убивает
+// 15-минутные старты 10:00–10:45 и 30-минутные 10:00–10:45, но не 11:00;
+// примыкающие (кончающиеся ровно в 10:00) остаются.
+func TestSlotsExcludeBookedCalls(t *testing.T) {
+	srv := newSlotsTestServer(t)
+	seedCallType(t, srv, "intro", 15)
+	seedCallType(t, srv, "half", 30)
+	seedCallType(t, srv, "hour", 60)
+
+	if rec := postCall(t, srv, callBody("hour", day1+"T10:00:00+03:00", "Гость", "guest@example.com")); rec.Code != http.StatusCreated {
+		t.Fatalf("book 60 min at 10:00: status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	// Тот же тип: занятый старт исчез, примыкающие (9:00–10:00 и 11:00–12:00) на месте.
+	hour := bookedSlotStarts(t, srv, "hour")
+	wantSlot(t, hour, day1+"T10:00:00+03:00", "часовой тип", false)
+	wantSlot(t, hour, day1+"T09:00:00+03:00", "часовой тип", true)
+	wantSlot(t, hour, day1+"T11:00:00+03:00", "часовой тип", true)
+
+	// 15-минутный тип: старты 10:00–10:45 пересекают [10:00, 11:00);
+	// 9:45 кончается ровно в начало брони, 11:00 примыкает справа.
+	intro := bookedSlotStarts(t, srv, "intro")
+	for _, m := range []string{"10:00", "10:15", "10:30", "10:45"} {
+		wantSlot(t, intro, day1+"T"+m+":00+03:00", "15-минутный тип", false)
+	}
+	wantSlot(t, intro, day1+"T09:45:00+03:00", "15-минутный тип", true)
+	wantSlot(t, intro, day1+"T11:00:00+03:00", "15-минутный тип", true)
+
+	// 30-минутный тип: заняты старты 10:00–10:45 (каждый заезжает в бронь),
+	// свободны 9:30 (кончается в 10:00) и 11:00.
+	half := bookedSlotStarts(t, srv, "half")
+	for _, m := range []string{"10:00", "10:15", "10:30", "10:45"} {
+		wantSlot(t, half, day1+"T"+m+":00+03:00", "30-минутный тип", false)
+	}
+	wantSlot(t, half, day1+"T09:30:00+03:00", "30-минутный тип", true)
+	wantSlot(t, half, day1+"T11:00:00+03:00", "30-минутный тип", true)
+}
