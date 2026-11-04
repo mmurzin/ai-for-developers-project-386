@@ -16,6 +16,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": "http://localhost:8080",
+      // /health в контракте живёт в корне, а не под /api — проксируем отдельно,
+      // иначе TS-клиент из браузера попадёт в SPA-фолбэк
+      "/health": "http://localhost:8080",
     },
   },
   test: {
