@@ -1,47 +1,71 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 import { listSlots } from "@/api/sdk.gen"
 import type { Slot } from "@/api/types.gen"
 
 const LOAD_ERROR = "Не удалось загрузить Слоты"
 
+type SlotsResult =
+  | { kind: "ok"; items: Slot[] }
+  | { kind: "error"; message: string; notFound: boolean }
+
+// fetchSlots — один запрос Слотов без состояния: и начальная загрузка,
+// и обновление после конфликта брони используют одну логику разбора.
+async function fetchSlots(callTypeId: string): Promise<SlotsResult> {
+  try {
+    const { data, error } = await listSlots({ path: { id: callTypeId } })
+    if (error) {
+      return {
+        kind: "error",
+        message: error.message,
+        notFound: error.code === "call_type_not_found",
+      }
+    }
+    return { kind: "ok", items: data?.items ?? [] }
+  } catch {
+    return { kind: "error", message: LOAD_ERROR, notFound: false }
+  }
+}
+
 // useSlots — Слоты Типа звонка через сгенерированный hey-api клиент.
 // 404 (тип не найден) отражается как notFound, остальные ошибки — текстом.
+// reload — повторная загрузка: после конфликта брони занятый Слот
+// должен исчезнуть из списка.
 export function useSlots(callTypeId: string) {
   const [items, setItems] = useState<Slot[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
   const [notFound, setNotFound] = useState(false)
 
-  // setState — только в .then/.catch-колбэках, не в теле эффекта
+  const apply = useCallback((result: SlotsResult) => {
+    if (result.kind === "error") {
+      setNotFound(result.notFound)
+      setError(result.message)
+      return
+    }
+    setNotFound(false)
+    setError(undefined)
+    setItems(result.items)
+  }, [])
+
+  // setState — только в .then-колбэках, не в теле эффекта
   // (react-hooks/set-state-in-effect).
   useEffect(() => {
     let cancelled = false
-    listSlots({ path: { id: callTypeId } }).then(
-      ({ data, error }) => {
-        if (cancelled) {
-          return
-        }
-        if (error) {
-          setNotFound(error.code === "call_type_not_found")
-          setError(error.message)
-          return
-        }
-        setNotFound(false)
-        setError(undefined)
-        setItems(data?.items ?? [])
-      },
-      () => {
-        if (!cancelled) {
-          setError(LOAD_ERROR)
-        }
-      },
-    )
+    fetchSlots(callTypeId).then((result) => {
+      if (!cancelled) {
+        apply(result)
+      }
+    })
     return () => {
       cancelled = true
     }
-  }, [callTypeId])
+  }, [callTypeId, apply])
 
-  return { items, error, notFound }
+  const reload = useCallback(async () => {
+    apply(await fetchSlots(callTypeId))
+  }, [callTypeId, apply])
+
+  return { items, error, notFound, reload }
 }
 
 export type DaySlots = {
