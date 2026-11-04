@@ -42,6 +42,16 @@
 - Типы: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`; scope — часть системы (`server`, `frontend`, `api`, `tools`, `agents`)
 - `feat` → minor, `fix` → patch; breaking changes — `!` после типа или футер `BREAKING CHANGE: ...`
 - Будущий деплой по тегам `v*` будет опираться на историю коммитов (semver)
+- **Коммиты реализации ссылаются на тикеты**: номер в заголовке — `feat(api): call types tracer (#14)`. Без тикета — только доки/хор
+
+## Ветки, PR и релизы
+
+- Фичи спеки делаются через `/implement-spec` **одной веткой на спеку** (#14–#17 — одна ветка), тикеты выполняются по очереди; коммиты внутри ссылаются на свой тикет `(#N)`
+- Финальный PR спеки мерджится **merge-commit**'ом, не squash — squash схлопнул бы ссылки на тикеты в один коммит. Перед мерджем — общее ревью всей ветки (`/code-review`)
+- Мелкие chore/docs — короткой веткой + PR (merge-commit) или прямым коммитом в main
+- Релизы: **release-please** (`.github/workflows/release-please.yml` + `release-please-config.json`) следит за main и копит conventional-коммиты в release-PR (бамп версий в `frontend/package.json` и `api/package.json` через extra-files + секция в CHANGELOG.md). Мердж release-PR = тег `vX.Y.Z` + GitHub Release
+- Первый релиз — `v0.1.0` (опция `release-as` в конфиге); после его выхода `release-as` убрать, дальше версии считает история коммитов
+- Требование «одна команда проверок» закрывается `mise run check`: lint + тесты Go + тесты фронта + браузерный сценарий Playwright с настоящим сервером (без подмены ответов API)
 
 ## Тесты
 
@@ -61,6 +71,7 @@
 - CLI shadcn 4.x: шаблон называется `-t vite` (не react); `-b/--base` — библиотека примитивов (radix), не цвет; неинтерактивно: `-t vite --base radix -p <пресет> -n <имя> --no-monorepo` (stdin-промпты не читает)
 - pnpm 12 протаскивает `--` в скрипт: `pnpm run x -- --flag` не доезжает до утилиты — флаги оформлять отдельным полем в `scripts` (пример: `test:junit`)
 - pnpm 12 сам доустанавливает зависимости перед `pnpm run <скрипт>` (на этом работает CI без явных install-шагов), но **не** перед `pnpm exec` — в mise-задачах вызывать скрипты через `pnpm --dir <пакет> run <скрипт>`, а не `pnpm exec <бинарь>`
+- release-please работает на GITHUB_TOKEN: созданные им теги и релизы **не триггерят** другие воркфлоу (ограничение GitHub). Когда появится деплой по тегам — перейти на PAT/fine-grained token в секрете
 - `internal/web/dist/index.html` — закоммиченный placeholder: без него `go:embed all:dist` не собирается на свежем чекауте. После `mise run build` этот файл заменяется реальным index из билда и висит «грязным» в git — это ожидаемо; не коммитить его попутно с фичами (вернуть: `git checkout -- internal/web/dist/index.html`)
 - CI: junit-задачи дублируют обычные test/frontend-test с отчётами; если меняете состав `check`, mirrors в `.github/workflows/ci.yml` (lint + junit-варианты + upload-artifact)
 - CI/деплой: go:embed и junit уже есть; деплоя по тегам и systemd на VPS по-прежнему нет — не предполагать, что это уже работает
