@@ -14,6 +14,7 @@ jobs:
 
       - uses: jdx/mise-action@v2
 
+      - run: mise run api-check
       - run: mise run lint
       - run: mise run test-junit
       - run: mise run frontend-test-junit

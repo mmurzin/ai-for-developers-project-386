@@ -15,6 +15,10 @@ run = "echo 'бэк: http://localhost:8080/health — фронт: http://localho
 [tasks.check]
 run = ["mise run lint", "mise run test", "mise run frontend-test"]
 
+[tasks.api-install]
+dir = "api"
+run = "pnpm install"
+
 [tasks.build]
 run = [
   "mise run frontend-build",
@@ -42,8 +46,19 @@ run = "pnpm run test:junit"
 [tasks.lint]
 run = ["golangci-lint run", "pnpm --dir frontend lint"]
 
+# Design-first пайплайн: .tsp → openapi.yaml → Go-стабы + TS-клиент.
+# pnpm run (не exec): pnpm 12 сам доустанавливает зависимости перед run-скриптами.
 [tasks.generate]
-run = "oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml"
+run = [
+  "pnpm --dir api run compile",
+  "oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml",
+  "pnpm --dir frontend run gen:api",
+]
+
+# Дрейф-контроль: правки только в api/**/*.tsp, всё остальное — производные.
+# Локально удобно: упало → перегенерировано в рабочем дереве, коммить и иди дальше.
+[tasks.api-check]
+run = ["mise run generate", "git diff --exit-code -- api/openapi.yaml internal/api/openapi.gen.go frontend/src/api"]
 
 [tasks.frontend-install]
 dir = "frontend"
