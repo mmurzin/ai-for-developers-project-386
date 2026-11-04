@@ -10,7 +10,7 @@ type SlotsResult =
   | { kind: "error"; message: string; notFound: boolean }
 
 // fetchSlots — один запрос Слотов без состояния: и начальная загрузка,
-// и обновление после конфликта брони используют одну логику разбора.
+// и обновление после конфликта занятости используют одну логику разбора.
 async function fetchSlots(callTypeId: string): Promise<SlotsResult> {
   try {
     const { data, error } = await listSlots({ path: { id: callTypeId } })
@@ -29,7 +29,7 @@ async function fetchSlots(callTypeId: string): Promise<SlotsResult> {
 
 // useSlots — Слоты Типа звонка через сгенерированный hey-api клиент.
 // 404 (тип не найден) отражается как notFound, остальные ошибки — текстом.
-// reload — повторная загрузка: после конфликта брони занятый Слот
+// reload — повторная загрузка: после конфликта занятости занятый Слот
 // должен исчезнуть из списка.
 export function useSlots(callTypeId: string) {
   const [items, setItems] = useState<Slot[]>([])

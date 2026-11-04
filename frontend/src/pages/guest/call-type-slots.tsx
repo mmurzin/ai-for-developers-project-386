@@ -16,7 +16,7 @@ const EMPTY_FORM = {
 // CallTypeSlots — гостевая страница календаря Слотов выбранного Типа
 // звонка: сетка вычислена API (Окно записи, Рабочие часы), время —
 // с явным смещением часового пояса. Клик по Слоту открывает форму
-// брони (имя, контакт); 201 — экран подтверждения, конфликт —
+// Записи (имя, контакт); 201 — экран подтверждения, конфликт —
 // понятное сообщение и свежий список Слотов без занятого.
 export function CallTypeSlots() {
   const { id = "" } = useParams()
@@ -208,9 +208,9 @@ export function CallTypeSlots() {
         {selected ? (
           <section
             className="flex flex-col gap-4 rounded-lg border p-6"
-            aria-label="Бронирование Слота"
+            aria-label="Запись на Слот"
           >
-            <h2 className="text-lg font-medium">Бронирование</h2>
+            <h2 className="text-lg font-medium">Запись на Слот</h2>
             <p className="text-muted-foreground text-sm" data-testid="selected-slot">
               {formatDayLabel(selected.startsAt.slice(0, 10))},{" "}
               {formatSlotTime(selected.startsAt)} – {formatSlotTime(selected.endsAt)}

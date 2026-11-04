@@ -13,7 +13,7 @@ export function Home() {
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-medium">Выберите тип звонка</h1>
           <p className="text-muted-foreground text-sm">
-            Виды Звонков, которые проводит Владелец страницы. Выберите
+            Типы звонков, которые проводит Владелец страницы. Выберите
             один — откроется календарь свободных Слотов.
           </p>
         </header>

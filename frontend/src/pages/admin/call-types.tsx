@@ -45,7 +45,7 @@ export function CallTypes() {
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-medium">Типы звонков</h1>
           <p className="text-muted-foreground text-sm">
-            Создавайте виды Звонков: Гость увидит их на главной странице и
+            Создавайте Типы звонков: Гость увидит их на главной странице и
             сможет записаться.
           </p>
           <Link
