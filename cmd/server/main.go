@@ -31,7 +31,7 @@ func main() {
 	}
 	defer func() { _ = store.Close() }()
 
-	srv := server.NewServer(":"+port, store)
+	srv := server.NewServer(":"+port, store, time.Now)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

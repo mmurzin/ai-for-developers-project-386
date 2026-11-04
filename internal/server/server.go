@@ -12,7 +12,10 @@ import (
 	"github.com/mmurzin/ai-for-developers-project-386/internal/web"
 )
 
-func NewServer(addr string, store *storage.Store) *http.Server {
+// NewServer собирает сервер с роутами контракта и SPA-фолбэком.
+// now — источник времени для computed-Слотов (шов для детерминированных
+// тестов; продакшн передаёт time.Now).
+func NewServer(addr string, store *storage.Store, now func() time.Time) *http.Server {
 	mux := http.NewServeMux()
 
 	// Роуты из TypeSpec-контракта (api/main.tsp → api/openapi.yaml):
@@ -22,7 +25,7 @@ func NewServer(addr string, store *storage.Store) *http.Server {
 	// 400 текстом. Поле не того типа (например, нецелая длительность) —
 	// это ошибка валидации данных, а не синтаксиса: 422 с телом ErrorBody.
 	api.HandlerWithOptions(
-		api.NewStrictHandlerWithOptions(api.NewAPI(store), nil, api.StrictHTTPServerOptions{
+		api.NewStrictHandlerWithOptions(api.NewAPI(store, now), nil, api.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 				var typeErr *json.UnmarshalTypeError
 				if errors.As(err, &typeErr) {
