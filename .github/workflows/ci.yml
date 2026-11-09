@@ -18,6 +18,10 @@ jobs:
       - run: mise run lint
       - run: mise run test-junit
       - run: mise run frontend-test-junit
+      # e2e: системные зависимости chromium (--with-deps) — только для ubuntu;
+      # сама задача e2e-junit идемпотентно доустановит браузеры (no-op)
+      - run: mise x -- playwright install --with-deps chromium
+      - run: mise run e2e-junit
 
       - uses: actions/upload-artifact@v4
         with:

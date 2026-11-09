@@ -8,7 +8,7 @@ import (
 )
 
 func TestServerServesEmbeddedFrontend(t *testing.T) {
-	srv := NewServer(":0")
+	srv := newTestServer(t)
 
 	rec := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -22,7 +22,7 @@ func TestServerServesEmbeddedFrontend(t *testing.T) {
 }
 
 func TestServerHealthStaysJSON(t *testing.T) {
-	srv := NewServer(":0")
+	srv := newTestServer(t)
 
 	rec := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -39,7 +39,7 @@ func TestServerHealthStaysJSON(t *testing.T) {
 }
 
 func TestServerReturns404ForUnknownAPIRoutes(t *testing.T) {
-	srv := NewServer(":0")
+	srv := newTestServer(t)
 
 	rec := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/nonexistent", nil))
@@ -52,7 +52,7 @@ func TestServerReturns404ForUnknownAPIRoutes(t *testing.T) {
 // Сгенерированный роутинг паттернами Go 1.22 должен отличать методы,
 // а не проваливать не-GET в SPA-фолбэк.
 func TestServerRejectsNonGetHealth(t *testing.T) {
-	srv := NewServer(":0")
+	srv := newTestServer(t)
 
 	rec := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/health", nil))
