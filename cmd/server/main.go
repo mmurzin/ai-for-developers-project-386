@@ -31,6 +31,12 @@ func main() {
 	}
 	defer func() { _ = store.Close() }()
 
+	// Посев дефолтов: после вайпа эфемерной базы демо-стенд поднимается
+	// с рабочими Типами звонка; непустая база не трогается (#26).
+	if err := store.SeedDefaultCallTypes(context.Background()); err != nil {
+		log.Fatalf("seed default call types: %v", err)
+	}
+
 	srv := server.NewServer(":"+port, store, time.Now)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
