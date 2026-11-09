@@ -13,7 +13,11 @@
     },
     "render": {
       "type": "remote",
-      "url": "https://mcp.render.com/mcp"
+      "url": "https://mcp.render.com/mcp",
+      "codemode": false,
+      "headers": {
+        "Authorization": "Bearer {env:RENDER_API_KEY}"
+      }
     }
   }
 }

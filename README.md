@@ -1,6 +1,6 @@
 # Календарь звонков
 
-Публичная демо-страница: **https://call-calendar-386.onrender.com**
+Публичная демо-страница: **https://call-calendar-386-3e2b.onrender.com**
 
 [![hexlet-check](https://github.com/mmurzin/ai-for-developers-project-386/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/mmurzin/ai-for-developers-project-386/actions)
 
@@ -77,17 +77,23 @@ docker run --rm -p 8080:8080 call-calendar-386   # http://localhost:8080/health
 ```json
 "render": {
   "type": "remote",
-  "url": "https://mcp.render.com/mcp"
+  "url": "https://mcp.render.com/mcp",
+  "codemode": false,
+  "headers": {
+    "Authorization": "Bearer {env:RENDER_API_KEY}"
+  }
 }
 ```
 
-Аутентификация — OAuth в браузере, токены хранятся локально у оператора:
+Аутентификация — API-ключом Render (OAuth-сервер Render не поддерживает dynamic client registration, поэтому ключ надёжнее). Ключ живёт только в окружении оператора:
 
 ```bash
-opencode mcp auth render
+# dashboard.render.com → Account Settings → API Keys → Create API Key
+export RENDER_API_KEY=rnd_...
+opencode mcp list    # должно показать: ✓ render connected
 ```
 
-Сервис `call-calendar-386` соберётся из репозитория (ветка `main`) по Dockerfile и обновляется автоматически на каждый пуш.
+Сервис `call-calendar-386` соберётся из репозитория (ветка `main`) по Dockerfile и обновляется автоматически на каждый пуш. URL назначает Render: поддомен `call-calendar-386.onrender.com` оказался занят, поэтому сервис живёт на `call-calendar-386-3e2b.onrender.com`.
 
 ### Ограничение хранения данных
 
