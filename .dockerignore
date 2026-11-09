@@ -5,6 +5,7 @@
 .idea
 .agents
 e2e
+tests
 docs
 api
 tmp
