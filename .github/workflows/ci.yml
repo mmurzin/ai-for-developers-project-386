@@ -23,6 +23,9 @@ jobs:
       - run: mise x -- playwright install --with-deps chromium
       - run: mise run e2e-junit
 
+      # образ не пушится: шаг ловит поломку Dockerfile/сборки в контейнере
+      - run: mise run docker-build
+
       - uses: actions/upload-artifact@v4
         with:
           name: junit-reports

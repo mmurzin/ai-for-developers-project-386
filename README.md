@@ -1,5 +1,6 @@
 # Календарь звонков
 
+Публичная демо-страница: **https://call-calendar-386.onrender.com**
 
 [![hexlet-check](https://github.com/mmurzin/ai-for-developers-project-386/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/mmurzin/ai-for-developers-project-386/actions)
 
@@ -55,6 +56,44 @@ mise run test             # тесты Go (gotestsum): smoke-тест запус
 mise run frontend-test    # тесты фронтенда (Vitest + React Testing Library)
 mise run build            # сборка бэкенда и фронтенда
 ```
+
+## Деплой
+
+Приложение публикуется одним Docker-образом: multi-stage-сборка (фронт → статический бинарь Go с embed-фронтом → `distroless/static:nonroot`). Платформа передаёт порт через переменную окружения `PORT`, healthcheck — `/health`.
+
+### Docker
+
+```bash
+mise run docker-build     # docker build -t call-calendar-386 .
+docker run --rm -p 8080:8080 call-calendar-386   # http://localhost:8080/health
+```
+
+Порт задаётся через `PORT` (по умолчанию 8080), файл SQLite — через `DB_PATH` (в образе `/data/calls.db`).
+
+### Подключение MCP-сервера Render
+
+Управление деплоем идёт через [Render MCP](https://render.com/docs/mcp-server) из конфигурации проекта (`opencode.json`), без секретов в репозитории:
+
+```json
+"render": {
+  "type": "remote",
+  "url": "https://mcp.render.com/mcp"
+}
+```
+
+Аутентификация — OAuth в браузере, токены хранятся локально у оператора:
+
+```bash
+opencode mcp auth render
+```
+
+Сервис `call-calendar-386` соберётся из репозитория (ветка `main`) по Dockerfile и обновляется автоматически на каждый пуш.
+
+### Ограничение хранения данных
+
+Демо-стенд работает с **эфемерным хранилищем**: SQLite-файл живёт в файловой системе контейнера и пропадает при каждом передеплое или рестарте — Типы звонков и Записи не переживают обновление сервиса. Персистентность (том/диск платформы) сознательно не подключена.
+
+Free-инстанс Render засыпает после ~15 минут без трафика: первый запрос после сна может ждать 30–60 секунд (cold start) — это не ошибка, ссылка живая.
 
 ---
 
