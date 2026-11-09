@@ -12,8 +12,10 @@ internal/web/dist/*
 internal/web/dist/assets/*
 !internal/web/dist/assets/.gitkeep
 
-# sqlite databases (DB_PATH default & local runs)
+# sqlite databases (DB_PATH default & local runs), включая WAL-соседи
 *.db
+*.db-shm
+*.db-wal
 
 # playwright e2e: артефакты прогонов и throwaway-бинарь/база
 test-results/

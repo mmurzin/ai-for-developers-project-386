@@ -76,6 +76,11 @@ run = "pnpm dev"
 dir = "frontend"
 run = "pnpm build"
 
+# Сборка docker-образа (без push): проверка, что образ собирается.
+# В check не включён — требует запущенного Docker-демона.
+[tasks.docker-build]
+run = "docker build -t call-calendar-386 ."
+
 # Браузерные тесты (Playwright как mise-инструмент, без package.json в корне):
 # против настоящего сервера — собранного бинаря с embed-фронтом.
 [tasks.e2e-install]
