@@ -159,6 +159,48 @@ func (s *Store) ListCallTypes(ctx context.Context) ([]CallType, error) {
 	return types, nil
 }
 
+// defaultCallTypes — дефолтные Типы звонка демо-стенда: после вайпа
+// эфемерной базы сервер восстанавливает их посевом (seed-if-empty, #26).
+var defaultCallTypes = []CallType{
+	{ID: "intro", Name: "Интро-звонок", Description: "Короткий созвон на 15 минут", DurationMinutes: 15},
+	{ID: "consult", Name: "Консультация", Description: "Консультация на 30 минут", DurationMinutes: 30},
+}
+
+// SeedDefaultCallTypes создаёт дефолтные Типы звонка, только если таблица
+// пуста: свежая база сразу получает рабочие типы, существующие данные
+// Владельца не затрагиваются; повторный вызов — no-op (#26). Проверка
+// пустоты и вставки — одна транзакция: сбой не оставляет частичный посев.
+// Если Владелец когда-нибудь удалит все Типы, посев при следующем старте
+// повторится (семантика «сеять в пустоту»).
+func (s *Store) SeedDefaultCallTypes(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin seed tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op после Commit
+
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM call_types`).Scan(&count); err != nil {
+		return fmt.Errorf("count call types: %w", err)
+	}
+	if count > 0 {
+		return nil // откат пустой транзакции — в defer
+	}
+
+	for _, ct := range defaultCallTypes {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO call_types (id, name, description, duration_minutes) VALUES (?, ?, ?, ?)`,
+			ct.ID, ct.Name, ct.Description, ct.DurationMinutes,
+		); err != nil {
+			return fmt.Errorf("seed call type %q: %w", ct.ID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit seed tx: %w", err)
+	}
+	return nil
+}
+
 // isUniqueViolation отличает нарушение уникальности PRIMARY KEY (1555)
 // от обычного UNIQUE-индекса (2067); sentinel-ошибок в modernc.org/sqlite
 // v1.61.x нет — только *sqlite.Error с кодом (заметки к #14).
