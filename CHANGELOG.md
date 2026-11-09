@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/mmurzin/ai-for-developers-project-386/compare/v0.2.0...v0.3.0) (2026-11-09)
+
+
+### Features
+
+* **server:** посеять дефолтные Типы звонка при старте ([#26](https://github.com/mmurzin/ai-for-developers-project-386/issues/26)) ([869d46c](https://github.com/mmurzin/ai-for-developers-project-386/commit/869d46c5bcc93575e4468d9157cf4ffe3c304845))
+* **server:** посеять дефолтные Типы звонка при старте ([#26](https://github.com/mmurzin/ai-for-developers-project-386/issues/26)) ([54f4d49](https://github.com/mmurzin/ai-for-developers-project-386/commit/54f4d494a8d132d64930f06eba4a45b86a51bdd6))
+
 ## [0.2.0](https://github.com/mmurzin/ai-for-developers-project-386/compare/v0.1.0...v0.2.0) (2026-11-09)
 
 
