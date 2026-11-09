@@ -13,6 +13,7 @@
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
 - `mise run e2e` — Playwright-сценарии из `e2e/` против настоящего сервера: собирает прод-бинарь целиком (фронт → embed → `go build`), поднимает его на `:8099` с throwaway-базой `tmp/e2e.db` (каждый прогон на чистой). `e2e-install` — установка браузеров (идемпотентно, no-op если на месте); `e2e-junit` — то же с junit-отчётом в `reports/`
 - `mise run build` — прод-бинарь целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`)
+- `mise run docker-build` — сборка Docker-образа (без push); в `check` не входит — требует запущенного Docker-демона, но шаг есть в CI
 - `mise run test-junit` / `frontend-test-junit` / `e2e-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
 - `mise run generate` — весь design-first пайплайн: `api/**/*.tsp` → `api/openapi.yaml` (tsp) → `internal/api/openapi.gen.go` (oapi-codegen) → `frontend/src/api/` (hey-api). См. секцию «API: design-first»
 - `mise run api-check` — дрейф-контроль: регенерирует всё и роняет `git diff --exit-code`, если закоммиченные артефакты не соответствуют `.tsp` (в CI — отдельный шаг)
