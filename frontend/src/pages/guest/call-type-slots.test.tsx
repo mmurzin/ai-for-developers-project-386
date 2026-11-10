@@ -166,6 +166,46 @@ test("шапка показывает Тип звонка и длительно�
   expect(screen.getByRole("heading", { name: "Свободные Слоты" })).toBeInTheDocument()
 })
 
+// Принятая тихая деградация шапки: строка «Название · N минут» —
+// вспомогательные данные. Сбой списка Типов звонков не валит экран
+// Слотов: колонки работают от ответа Слотов, строка просто не
+// рендерится, новых сообщений и ретраев нет.
+test("сбой списка Типов звонков: колонки работают, строка шапки не рендерится", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+          { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:30:00+03:00" },
+        ],
+      }),
+    ],
+    callTypes: errorResponse(500, {
+      code: "internal_error",
+      message: "Не удалось загрузить список типов звонков",
+    }),
+  })
+
+  renderSlotsPage()
+
+  // Слоты загрузились успешно — экран живёт своей загрузкой: колонка
+  // Слотов подписана, кнопки времён на месте, форма доступна для
+  // выбора. Ни экрана ошибки, ни алертов — деградация тихая.
+  expect(
+    await screen.findByRole("heading", { name: "Четверг, 5 ноября" }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toBeInTheDocument()
+  expect(screen.getByRole("heading", { name: "Свободные Слоты" })).toBeInTheDocument()
+  expect(screen.getByLabelText("Имя")).toBeInTheDocument()
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole("button", { name: "09:00 (+03:00)" }))
+  expect(screen.getByLabelText("Имя")).toBeEnabled()
+  expect(screen.getByTestId("booking-summary")).toHaveTextContent(
+    "09:00 (+03:00) – 09:30 (+03:00)",
+  )
+})
+
 test("строка Типа звонка появляется, когда есть оба ответа", async () => {
   let resolveSlots!: (response: unknown) => void
   const slotsResponse = new Promise((resolve) => {
