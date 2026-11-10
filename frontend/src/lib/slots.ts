@@ -101,7 +101,8 @@ export function dayKeyToDate(key: string): Date {
 }
 
 // dateToDayKey — ключ дня из даты календаря (локальные геттеры —
-// зеркало dayKeyToDate).
+// зеркало dayKeyToDate). Зеркало dayKey из e2e/dates.ts: общий
+// модуль невозможен (e2e живёт без package.json) — менять парой.
 export function dateToDayKey(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")

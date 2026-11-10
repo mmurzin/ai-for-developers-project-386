@@ -13,6 +13,8 @@ export function addDays(base: Date, days: number): Date {
 
 // Ключ дня «YYYY-MM-DD» в локальной зоне — тот же формат, каким
 // react-day-picker помечает ячейку сетки (td[data-day]).
+// Зеркало dateToDayKey из frontend/src/lib/slots.ts: общий модуль
+// невозможен (e2e живёт без package.json) — менять только парой.
 export function dayKey(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
