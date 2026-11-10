@@ -1,27 +1,43 @@
 import { useState } from "react"
 import { Link, useParams } from "react-router"
+import { ru } from "react-day-picker/locale"
 
 import type { Call, Slot } from "@/api/types.gen"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { bookCall } from "@/lib/booking"
-import { formatDayLabel, formatSlotTime, groupSlotsByDay, useSlots } from "@/lib/slots"
+import {
+  availableDayKeys,
+  calendarMonthRange,
+  dateToDayKey,
+  dayKeyToDate,
+  formatDayLabel,
+  formatSlotTime,
+  groupSlotsByDay,
+  useSlots,
+} from "@/lib/slots"
 
 const EMPTY_FORM = {
   guestName: "",
   guestContact: "",
 }
 
-// CallTypeSlots — гостевая страница календаря Слотов выбранного Типа
-// звонка: сетка вычислена API (Окно записи, Рабочие часы), время —
-// с явным смещением часового пояса. Клик по Слоту открывает форму
-// Записи (имя, контакт); 201 — экран подтверждения, конфликт —
+// CallTypeSlots — гостевая страница Слотов выбранного Типа звонка:
+// три колонны «Календарь | Слоты выбранного дня | Запись» (ниже lg —
+// вертикальная стопка в том же порядке). Сетка вычислена API (Окно
+// записи, Рабочие часы), время — с явным смещением часового пояса.
+// Первый доступный день выбирается автоматически; в календаре
+// недоступны дни вне Окна и дни без Слотов. Клик по Слоту открывает
+// форму Записи (имя, контакт); 201 — экран подтверждения, конфликт —
 // понятное сообщение и свежий список Слотов без занятого.
 export function CallTypeSlots() {
   const { id = "" } = useParams()
   const { items, error, notFound, reload } = useSlots(id)
 
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
+  const [monthOverride, setMonthOverride] = useState<Date | null>(null)
   const [selected, setSelected] = useState<Slot | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [bookingError, setBookingError] = useState<string | undefined>(undefined)
@@ -46,12 +62,38 @@ export function CallTypeSlots() {
     )
   }
 
+  const days = groupSlotsByDay(items)
+  const dayKeys = availableDayKeys(items)
+  const available = new Set(dayKeys)
+  // Активный день выводится из списка: пока дня не выбирали (или он
+  // исчез из списка после конфликта) — первый доступный.
+  const activeDayKey =
+    selectedDayKey !== null && available.has(selectedDayKey)
+      ? selectedDayKey
+      : (dayKeys[0] ?? null)
+  const activeDay = activeDayKey === null ? undefined : days.find((d) => d.key === activeDayKey)
+  const months = calendarMonthRange(dayKeys)
+
   const pickSlot = (slot: Slot) => {
     setSelected(slot)
     setBookingError(undefined)
   }
 
+  // Смена дня сбрасывает выбранный Слот: форма Записи привязана
+  // к конкретному времени, другого дня его не видно.
+  const pickDay = (date: Date) => {
+    const key = dateToDayKey(date)
+    if (!available.has(key) || key === activeDayKey) {
+      return
+    }
+    setSelectedDayKey(key)
+    setSelected(null)
+    setBookingError(undefined)
+  }
+
   const resetBooking = () => {
+    setSelectedDayKey(null)
+    setMonthOverride(null)
     setSelected(null)
     setForm(EMPTY_FORM)
     setBookingError(undefined)
@@ -144,16 +186,14 @@ export function CallTypeSlots() {
     )
   }
 
-  const days = groupSlotsByDay(items)
-
   return (
     <div className="flex min-h-svh justify-center p-6">
-      <div className="flex w-full max-w-xl flex-col gap-8">
+      <div className="flex w-full max-w-6xl flex-col gap-8">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-medium">Свободные Слоты</h1>
           <p className="text-muted-foreground text-sm">
             Время указано с явным смещением часового пояса инстанса.
-            Выберите Слот, чтобы записаться.
+            Выберите день и Слот, чтобы записаться.
           </p>
           <Link
             to="/"
@@ -177,11 +217,38 @@ export function CallTypeSlots() {
         {days.length === 0 && !error ? (
           <p className="text-muted-foreground text-sm">Свободных Слотов нет.</p>
         ) : (
-          days.map((day) => (
-            <section key={day.key} className="flex flex-col gap-3" data-testid="slot-day">
-              <h2 className="text-lg font-medium">{day.label}</h2>
+          <div className="grid items-start gap-6 lg:grid-cols-[auto_minmax(240px,1fr)_minmax(320px,400px)]">
+            <section
+              aria-label="Календарь выбора дня"
+              className="flex justify-center rounded-lg border p-3 lg:justify-start"
+            >
+              <Calendar
+                mode="single"
+                locale={ru}
+                weekStartsOn={1}
+                month={monthOverride ?? (activeDayKey ? dayKeyToDate(activeDayKey) : undefined)}
+                onMonthChange={setMonthOverride}
+                selected={activeDayKey ? dayKeyToDate(activeDayKey) : undefined}
+                onSelect={(date) => {
+                  if (date) {
+                    pickDay(date)
+                  }
+                }}
+                disabled={(date) => !available.has(dateToDayKey(date))}
+                startMonth={months?.startMonth}
+                endMonth={months?.endMonth}
+                required
+                autoFocus={false}
+              />
+            </section>
+
+            <section
+              aria-label="Слоты выбранного дня"
+              className="flex min-w-0 flex-col gap-3"
+            >
+              <h2 className="text-lg font-medium">{activeDay?.label}</h2>
               <ul className="flex flex-wrap gap-2">
-                {day.slots.map((slot) => {
+                {activeDay?.slots.map((slot) => {
                   const isSelected = selected?.startsAt === slot.startsAt
                   return (
                     <li key={slot.startsAt}>
@@ -202,56 +269,56 @@ export function CallTypeSlots() {
                 })}
               </ul>
             </section>
-          ))
+
+            {selected ? (
+              <section
+                className="flex flex-col gap-4 rounded-lg border p-6"
+                aria-label="Запись на Слот"
+              >
+                <h2 className="text-lg font-medium">Запись на Слот</h2>
+                <p className="text-muted-foreground text-sm" data-testid="selected-slot">
+                  {formatDayLabel(selected.startsAt.slice(0, 10))},{" "}
+                  {formatSlotTime(selected.startsAt)} – {formatSlotTime(selected.endsAt)}
+                </p>
+
+                <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="guest-name">Имя</Label>
+                    <Input
+                      id="guest-name"
+                      value={form.guestName}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, guestName: event.target.value }))
+                      }
+                      placeholder="Как к вам обращаться"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="guest-contact">Контакт</Label>
+                    <Input
+                      id="guest-contact"
+                      value={form.guestContact}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, guestContact: event.target.value }))
+                      }
+                      placeholder="Email или телефон для связи"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit">Записаться</Button>
+                    <Button type="button" variant="ghost" onClick={resetBooking}>
+                      Выбрать другое время
+                    </Button>
+                  </div>
+                </form>
+              </section>
+            ) : null}
+          </div>
         )}
-
-        {selected ? (
-          <section
-            className="flex flex-col gap-4 rounded-lg border p-6"
-            aria-label="Запись на Слот"
-          >
-            <h2 className="text-lg font-medium">Запись на Слот</h2>
-            <p className="text-muted-foreground text-sm" data-testid="selected-slot">
-              {formatDayLabel(selected.startsAt.slice(0, 10))},{" "}
-              {formatSlotTime(selected.startsAt)} – {formatSlotTime(selected.endsAt)}
-            </p>
-
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="guest-name">Имя</Label>
-                <Input
-                  id="guest-name"
-                  value={form.guestName}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, guestName: event.target.value }))
-                  }
-                  placeholder="Как к вам обращаться"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="guest-contact">Контакт</Label>
-                <Input
-                  id="guest-contact"
-                  value={form.guestContact}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, guestContact: event.target.value }))
-                  }
-                  placeholder="Email или телефон для связи"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit">Записаться</Button>
-                <Button type="button" variant="ghost" onClick={resetBooking}>
-                  Выбрать другое время
-                </Button>
-              </div>
-            </form>
-          </section>
-        ) : null}
       </div>
     </div>
   )

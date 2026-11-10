@@ -31,26 +31,148 @@ function renderSlotsPage() {
   )
 }
 
-test("слоты сгруппированы по дням, время с явным смещением", async () => {
+// Кнопка дня календаря по ключу дня «YYYY-MM-DD»: react-day-picker
+// помечает ячейку сетки атрибутом td[data-day] ISO-датой.
+function dayButton(container: HTMLElement, dayKey: string) {
+  const button = container.querySelector<HTMLButtonElement>(
+    `td[data-day="${dayKey}"] button`,
+  )
+  if (!button) {
+    throw new Error(`день ${dayKey} не отображён в календаре`)
+  }
+  return button
+}
+
+test("первый доступный день выбран автоматически, колонка Слотов подписана датой", async () => {
   vi.spyOn(client, "get").mockResolvedValue(
     okResponse(200, {
       items: [
         { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
         { startsAt: "2026-11-05T09:15:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
-        { startsAt: "2026-11-06T09:00:00+03:00", endsAt: "2026-11-06T09:15:00+03:00" },
+        { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:15:00+03:00" },
       ],
     }) as never,
   )
 
   renderSlotsPage()
 
+  // Заголовок колонки Слотов — дата автовыбранного первого дня.
   expect(
     await screen.findByRole("heading", { name: "Четверг, 5 ноября" }),
   ).toBeInTheDocument()
-  expect(screen.getByRole("heading", { name: "Пятница, 6 ноября" })).toBeInTheDocument()
-  // 09:00 есть в оба дня, 09:15 — только в первый.
-  expect(screen.getAllByText("09:00 (+03:00)")).toHaveLength(2)
-  expect(screen.getByText("09:15 (+03:00)")).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "09:15 (+03:00)" })).toBeInTheDocument()
+  // Слоты другого дня не показываются до выбора дня в календаре.
+  expect(
+    screen.queryByRole("button", { name: "10:00 (+03:00)" }),
+  ).not.toBeInTheDocument()
+  // В календаре автовыбранный день отмечен выбранным.
+  expect(screen.getByRole("gridcell", { selected: true })).toHaveAttribute(
+    "data-day",
+    "2026-11-05",
+  )
+})
+
+test("недоступны дни без Слотов и дни вне Окна записи", async () => {
+  vi.spyOn(client, "get").mockResolvedValue(
+    okResponse(200, {
+      items: [
+        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+        { startsAt: "2026-11-06T09:00:00+03:00", endsAt: "2026-11-06T09:15:00+03:00" },
+      ],
+    }) as never,
+  )
+
+  const { container } = renderSlotsPage()
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+
+  expect(dayButton(container, "2026-11-05")).toBeEnabled()
+  expect(dayButton(container, "2026-11-06")).toBeEnabled()
+  // Выходные не глушатся как класс: суббота недоступна не из-за
+  // выходного, а из-за отсутствия Слотов.
+  expect(dayButton(container, "2026-11-07")).toBeDisabled()
+  // День до первого доступного — вне Окна записи.
+  expect(dayButton(container, "2026-11-04")).toBeDisabled()
+})
+
+test("навигация месяцами не выходит за пределы Окна записи", async () => {
+  vi.spyOn(client, "get").mockResolvedValue(
+    okResponse(200, {
+      items: [
+        { startsAt: "2026-11-25T09:00:00+03:00", endsAt: "2026-11-25T09:15:00+03:00" },
+        { startsAt: "2026-12-01T09:00:00+03:00", endsAt: "2026-12-01T09:15:00+03:00" },
+        { startsAt: "2026-12-08T09:00:00+03:00", endsAt: "2026-12-08T09:15:00+03:00" },
+      ],
+    }) as never,
+  )
+
+  renderSlotsPage()
+  await screen.findByRole("heading", { name: "Среда, 25 ноября" })
+
+  // По умолчанию показан месяц первого доступного дня.
+  expect(screen.getByText("ноябрь 2026")).toBeInTheDocument()
+  expect(
+    screen.getByRole("button", { name: "Перейти к предыдущему месяцу" }),
+  ).toHaveAttribute("aria-disabled", "true")
+  expect(
+    screen.getByRole("button", { name: "Перейти к следующему месяцу" }),
+  ).not.toHaveAttribute("aria-disabled")
+
+  // react-day-picker пересоздаёт кнопки навигации при смене месяца —
+  // запрашиваем их заново после клика.
+  fireEvent.click(screen.getByRole("button", { name: "Перейти к следующему месяцу" }))
+  expect(screen.getByText("декабрь 2026")).toBeInTheDocument()
+  // Дальше декабря навигация не идёт: Окно записи кончилось.
+  expect(
+    screen.getByRole("button", { name: "Перейти к следующему месяцу" }),
+  ).toHaveAttribute("aria-disabled", "true")
+  expect(
+    screen.getByRole("button", { name: "Перейти к предыдущему месяцу" }),
+  ).not.toHaveAttribute("aria-disabled")
+
+  fireEvent.click(screen.getByRole("button", { name: "Перейти к предыдущему месяцу" }))
+  expect(screen.getByText("ноябрь 2026")).toBeInTheDocument()
+})
+
+test("клик по доступному дню переключает колонку Слотов и сбрасывает выбор Слота", async () => {
+  vi.spyOn(client, "get").mockResolvedValue(
+    okResponse(200, {
+      items: [
+        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+        { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:30:00+03:00" },
+      ],
+    }) as never,
+  )
+
+  const { container } = renderSlotsPage()
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+
+  fireEvent.click(screen.getByRole("button", { name: "09:00 (+03:00)" }))
+  expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeInTheDocument()
+
+  fireEvent.click(dayButton(container, "2026-11-06"))
+  expect(
+    screen.getByRole("heading", { name: "Пятница, 6 ноября" }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "10:00 (+03:00)" })).toBeInTheDocument()
+  expect(
+    screen.queryByRole("button", { name: "09:00 (+03:00)" }),
+  ).not.toBeInTheDocument()
+  // Смена дня сбрасывает выбранный Слот: форма Записи спрятана.
+  expect(
+    screen.queryByRole("button", { name: "Записаться" }),
+  ).not.toBeInTheDocument()
+
+  // Возврат к первому дню: Слоты на месте, выбор сброшен.
+  fireEvent.click(dayButton(container, "2026-11-05"))
+  expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  )
 })
 
 test("неизвестный тип звонка — понятное сообщение и путь назад", async () => {

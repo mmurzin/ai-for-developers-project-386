@@ -74,6 +74,55 @@ export type DaySlots = {
   slots: Slot[]
 }
 
+// availableDayKeys — уникальные ключи дней («YYYY-MM-DD») из списка
+// Слотов в календарном порядке. День есть в списке = день доступен
+// в календаре; отдельных запросов доступность не требует.
+export function availableDayKeys(slots: Slot[]): string[] {
+  return Array.from(new Set(slots.map((slot) => slot.startsAt.slice(0, 10)))).sort()
+}
+
+// firstAvailableDayKey — ключ первого доступного дня: автовыбор при
+// загрузке экрана. Без Слотов — undefined.
+export function firstAvailableDayKey(slots: Slot[]): string | undefined {
+  return availableDayKeys(slots)[0]
+}
+
+// dayKeyToDate — календарная дата из ключа дня «YYYY-MM-DD»: полночь
+// локальной зоны, как ожидает react-day-picker (работает локальными
+// геттерами). Компоненты даты собираем явно, не new Date(строка):
+// дата-строки парсятся как UTC-полночь и сдвигают день в другой зоне.
+export function dayKeyToDate(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+// dateToDayKey — ключ дня из даты календаря (локальные геттеры —
+// зеркало dayKeyToDate).
+export function dateToDayKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+// calendarMonthRange — границы навигации по месяцам: месяц первого
+// доступного дня … месяц последнего. Окно записи занимает максимум
+// два месяца, дальше календарь не листается.
+export function calendarMonthRange(dayKeys: string[]): {
+  startMonth: Date
+  endMonth: Date
+} | undefined {
+  if (dayKeys.length === 0) {
+    return undefined
+  }
+  const first = dayKeyToDate(dayKeys[0]!)
+  const last = dayKeyToDate(dayKeys[dayKeys.length - 1]!)
+  return {
+    startMonth: new Date(first.getFullYear(), first.getMonth(), 1),
+    endMonth: new Date(last.getFullYear(), last.getMonth() + 1, 0),
+  }
+}
+
 // groupSlotsByDay группирует Слоты по календарным дням зоны инстанса:
 // дата берётся из ISO-строки (первые 10 символов), порядок сохраняется.
 export function groupSlotsByDay(slots: Slot[]): DaySlots[] {
