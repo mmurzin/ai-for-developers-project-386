@@ -95,3 +95,29 @@ export function useCallTypes(): UseCallTypes {
 
   return { items, error, create }
 }
+
+// useCallType — Тип звонка по идентификатору из роута: отдельного
+// эндпоинта «прочитать один» нет, публичный список Типов звонков уже
+// им пользуется, поэтому поиск в нём. undefined — список ещё не
+// загружен, запрос не удался или идентификатора в списке нет:
+// вызывающий решает, что показывать (экран Слотов ждёт и ответ
+// Слотов — консервативно без строки, пока нет обоих ответов).
+export function useCallType(callTypeId: string): CallType | undefined {
+  const [callType, setCallType] = useState<CallType | undefined>(undefined)
+
+  // setState — только в .then-колбэках, не в теле эффекта
+  // (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    let cancelled = false
+    fetchCallTypes().then((result) => {
+      if (!cancelled && result.kind === "ok") {
+        setCallType(result.items.find((item) => item.id === callTypeId))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [callTypeId])
+
+  return callType
+}

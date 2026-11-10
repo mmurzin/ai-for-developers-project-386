@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { bookCall } from "@/lib/booking"
+import { useCallType } from "@/lib/call-types"
 import {
   availableDayKeys,
   calendarMonthRange,
@@ -29,15 +30,19 @@ const EMPTY_FORM = {
 // три колонны «Календарь | Слоты выбранного дня | Запись» (ниже lg —
 // вертикальная стопка в том же порядке). Сетка вычислена API (Окно
 // записи, Рабочие часы), время — с явным смещением часового пояса.
-// Первый доступный день выбирается автоматически; в календаре
-// недоступны дни вне Окна и дни без Слотов. Колонка Записи видна
-// всегда: до выбора Слота поля неактивны, над формой — сводка выбора
-// (дата, интервал, длительность из границ Слота). 201 — экран
-// подтверждения, конфликт — понятное сообщение и свежий список
-// Слотов без занятого.
+// В шапке — Название Типа звонка и длительность из списка Типов
+// звонков (поиск по идентификатору роута); строка появляется, только
+// когда есть оба ответа — Слотов и списка, чтобы не мигать перед
+// экраном «не найден». Первый доступный день выбирается
+// автоматически; в календаре недоступны дни вне Окна и дни без
+// Слотов. Колонка Записи видна всегда: до выбора Слота поля
+// неактивны, над формой — сводка выбора (дата, интервал,
+// длительность из границ Слота). 201 — экран подтверждения, конфликт
+// — понятное сообщение и свежий список Слотов без занятого.
 export function CallTypeSlots() {
   const { id = "" } = useParams()
-  const { items, error, notFound, reload } = useSlots(id)
+  const { items, error, notFound, loaded, reload } = useSlots(id)
+  const callType = useCallType(id)
 
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [monthOverride, setMonthOverride] = useState<Date | null>(null)
@@ -194,6 +199,11 @@ export function CallTypeSlots() {
       <div className="flex w-full max-w-6xl flex-col gap-8">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-medium">Свободные Слоты</h1>
+          {callType && loaded ? (
+            <p className="text-muted-foreground text-sm font-medium">
+              {callType.name} · {callType.durationMinutes} минут
+            </p>
+          ) : null}
           <p className="text-muted-foreground text-sm">
             Время указано с явным смещением часового пояса инстанса.
             Выберите день и Слот, чтобы записаться.
