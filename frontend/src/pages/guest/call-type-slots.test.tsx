@@ -19,6 +19,22 @@ const errorResponse = (status: number, body: unknown) => ({
   response: new Response(JSON.stringify(body), { status }),
 })
 
+// Мок GET раздаёт ответы по URL запроса: экран Слотов шлёт два GET —
+// Слоты Типа звонка (/api/call-types/{id}/slots) и список Типов
+// звонков (/api/call-types). Ответы Слотов расходуются по запросам
+// (перезагрузка списка после конфликта), последний повторяется;
+// список Типов получает один ответ на все запросы.
+function mockGet(responses: { slots: unknown[]; callTypes?: unknown }) {
+  const callTypes = responses.callTypes ?? okResponse(200, { items: [] })
+  let requested = 0
+  return vi.spyOn(client, "get").mockImplementation((({ url }: { url?: string }) => {
+    if (url === "/api/call-types") {
+      return Promise.resolve(callTypes)
+    }
+    return Promise.resolve(responses.slots[Math.min(requested++, responses.slots.length - 1)])
+  }) as never)
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -44,15 +60,17 @@ function dayButton(container: HTMLElement, dayKey: string) {
 }
 
 test("первый доступный день выбран автоматически, колонка Слотов подписана датой", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
-        { startsAt: "2026-11-05T09:15:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
-        { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:15:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+          { startsAt: "2026-11-05T09:15:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+          { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:15:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   renderSlotsPage()
 
@@ -73,15 +91,80 @@ test("первый доступный день выбран автоматиче
   )
 })
 
-test("недоступны дни без Слотов и дни вне Окна записи", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
+test("шапка показывает Тип звонка и длительность из списка Типов звонков", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+        ],
+      }),
+    ],
+    callTypes: okResponse(200, {
+      items: [
+        { id: "intro", name: "Интро-звонок", description: "Знакомство", durationMinutes: 15 },
+        { id: "consult", name: "Консультация", description: "", durationMinutes: 30 },
+      ],
+    }),
+  })
+
+  renderSlotsPage()
+
+  // Строка «Название · N минут» приходит вторым GET (список Типов
+  // звонков) и собирается поиском по идентификатору из роута; h1
+  // экрана сохраняется.
+  expect(await screen.findByText("Интро-звонок · 15 минут")).toBeInTheDocument()
+  expect(screen.getByRole("heading", { name: "Свободные Слоты" })).toBeInTheDocument()
+})
+
+test("строка Типа звонка появляется, когда есть оба ответа", async () => {
+  let resolveSlots!: (response: unknown) => void
+  const slotsResponse = new Promise((resolve) => {
+    resolveSlots = resolve
+  })
+  // Список Типов отвечает сразу, Слоты — когда тест решит.
+  vi.spyOn(client, "get").mockImplementation((({ url }: { url?: string }) => {
+    if (url === "/api/call-types") {
+      return Promise.resolve(
+        okResponse(200, {
+          items: [
+            { id: "intro", name: "Интро-звонок", description: "Знакомство", durationMinutes: 15 },
+          ],
+        }),
+      )
+    }
+    return slotsResponse
+  }) as never)
+
+  renderSlotsPage()
+
+  // Тип звонка уже известен, Слоты ещё грузятся: строки нет — если
+  // Слоты ответят 404, экран «не найден» подменит всю шапку.
+  expect(await screen.findByRole("heading", { name: "Свободные Слоты" })).toBeInTheDocument()
+  expect(screen.queryByText("Интро-звонок · 15 минут")).not.toBeInTheDocument()
+
+  // Пришёл ответ Слотов — строка на месте.
+  resolveSlots(
     okResponse(200, {
       items: [
         { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
-        { startsAt: "2026-11-06T09:00:00+03:00", endsAt: "2026-11-06T09:15:00+03:00" },
       ],
-    }) as never,
+    }),
   )
+  expect(await screen.findByText("Интро-звонок · 15 минут")).toBeInTheDocument()
+})
+
+test("недоступны дни без Слотов и дни вне Окна записи", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+          { startsAt: "2026-11-06T09:00:00+03:00", endsAt: "2026-11-06T09:15:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   const { container } = renderSlotsPage()
   await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
@@ -96,15 +179,17 @@ test("недоступны дни без Слотов и дни вне Окна 
 })
 
 test("навигация месяцами не выходит за пределы Окна записи", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-25T09:00:00+03:00", endsAt: "2026-11-25T09:15:00+03:00" },
-        { startsAt: "2026-12-01T09:00:00+03:00", endsAt: "2026-12-01T09:15:00+03:00" },
-        { startsAt: "2026-12-08T09:00:00+03:00", endsAt: "2026-12-08T09:15:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-25T09:00:00+03:00", endsAt: "2026-11-25T09:15:00+03:00" },
+          { startsAt: "2026-12-01T09:00:00+03:00", endsAt: "2026-12-01T09:15:00+03:00" },
+          { startsAt: "2026-12-08T09:00:00+03:00", endsAt: "2026-12-08T09:15:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   renderSlotsPage()
   await screen.findByRole("heading", { name: "Среда, 25 ноября" })
@@ -135,15 +220,17 @@ test("навигация месяцами не выходит за предел�
 })
 
 test("клик по другому Слоту или дню заменяет выбор", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
-        { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
-        { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:30:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+          { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
+          { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:30:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   const { container } = renderSlotsPage()
   await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
@@ -191,18 +278,28 @@ test("клик по другому Слоту или дню заменяет в�
 })
 
 test("неизвестный тип звонка — понятное сообщение и путь назад", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    errorResponse(404, {
-      code: "call_type_not_found",
-      message: "Тип звонка не найден",
-    }) as never,
-  )
+  // Список Типов звонка отвечает успешно и знает «intro», но 404
+  // Слотов важнее: экран «не найден» целиком заменяет шапку.
+  mockGet({
+    slots: [
+      errorResponse(404, {
+        code: "call_type_not_found",
+        message: "Тип звонка не найден",
+      }),
+    ],
+    callTypes: okResponse(200, {
+      items: [
+        { id: "intro", name: "Интро-звонок", description: "Знакомство", durationMinutes: 15 },
+      ],
+    }),
+  })
 
   renderSlotsPage()
 
   expect(
     await screen.findByRole("heading", { name: "Тип звонка не найден" }),
   ).toBeInTheDocument()
+  expect(screen.queryByText("Интро-звонок · 15 минут")).not.toBeInTheDocument()
   expect(screen.getByRole("link", { name: "К списку типов звонков" })).toHaveAttribute(
     "href",
     "/",
@@ -210,14 +307,16 @@ test("неизвестный тип звонка — понятное сообщ
 })
 
 test("форма Записи видна всегда, но до выбора Слота неактивна", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
-        { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+          { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   renderSlotsPage()
   await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
@@ -239,13 +338,15 @@ test("форма Записи видна всегда, но до выбора С
 })
 
 test("выбор Слота активирует форму и показывает сводку выбора", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+        ],
+      }),
+    ],
+  })
 
   renderSlotsPage()
   await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
@@ -266,13 +367,15 @@ test("выбор Слота активирует форму и показыва�
 })
 
 test("гость записывается на Слот и видит подтверждение с деталями Записи", async () => {
-  vi.spyOn(client, "get").mockResolvedValue(
-    okResponse(200, {
-      items: [
-        { startsAt: "2026-11-05T10:00:00+03:00", endsAt: "2026-11-05T10:15:00+03:00" },
-      ],
-    }) as never,
-  )
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T10:00:00+03:00", endsAt: "2026-11-05T10:15:00+03:00" },
+        ],
+      }),
+    ],
+  })
   const post = vi.spyOn(client, "post").mockResolvedValue(
     okResponse(201, {
       callTypeId: "intro",
@@ -319,24 +422,22 @@ test("гость записывается на Слот и видит подтв
 })
 
 test("конфликт занятости: понятное сообщение и занятый Слот исчезает из списка", async () => {
-  const get = vi
-    .spyOn(client, "get")
-    .mockResolvedValueOnce(
+  const get = mockGet({
+    slots: [
       okResponse(200, {
         items: [
           { startsAt: "2026-11-05T10:00:00+03:00", endsAt: "2026-11-05T10:15:00+03:00" },
           { startsAt: "2026-11-05T10:15:00+03:00", endsAt: "2026-11-05T10:30:00+03:00" },
         ],
-      }) as never,
-    )
-    // Повторная загрузка после конфликта: занятый Слот уже вырезан.
-    .mockResolvedValueOnce(
+      }),
+      // Повторная загрузка после конфликта: занятый Слот уже вырезан.
       okResponse(200, {
         items: [
           { startsAt: "2026-11-05T10:15:00+03:00", endsAt: "2026-11-05T10:30:00+03:00" },
         ],
-      }) as never,
-    )
+      }),
+    ],
+  })
   vi.spyOn(client, "post").mockResolvedValueOnce(
     errorResponse(409, {
       code: "slot_taken",
@@ -370,5 +471,7 @@ test("конфликт занятости: понятное сообщение �
     ).not.toBeInTheDocument(),
   )
   expect(screen.getByRole("button", { name: "10:15 (+03:00)" })).toBeInTheDocument()
-  await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  // Три GET: список Типов звонка + две загрузки Слотов (до конфликта
+  // и после).
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
 })

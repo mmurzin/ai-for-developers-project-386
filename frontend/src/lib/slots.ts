@@ -29,12 +29,15 @@ async function fetchSlots(callTypeId: string): Promise<SlotsResult> {
 
 // useSlots — Слоты Типа звонка через сгенерированный hey-api клиент.
 // 404 (тип не найден) отражается как notFound, остальные ошибки — текстом.
-// reload — повторная загрузка: после конфликта занятости занятый Слот
-// должен исчезнуть из списка.
+// loaded — успешный ответ Слотов уже применён (для шапки: строка Типа
+// звонка появляется, только когда есть оба ответа). reload — повторная
+// загрузка: после конфликта занятости занятый Слот должен исчезнуть
+// из списка.
 export function useSlots(callTypeId: string) {
   const [items, setItems] = useState<Slot[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
   const [notFound, setNotFound] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const apply = useCallback((result: SlotsResult) => {
     if (result.kind === "error") {
@@ -45,6 +48,7 @@ export function useSlots(callTypeId: string) {
     setNotFound(false)
     setError(undefined)
     setItems(result.items)
+    setLoaded(true)
   }, [])
 
   // setState — только в .then-колбэках, не в теле эффекта
@@ -65,7 +69,7 @@ export function useSlots(callTypeId: string) {
     apply(await fetchSlots(callTypeId))
   }, [callTypeId, apply])
 
-  return { items, error, notFound, reload }
+  return { items, error, notFound, loaded, reload }
 }
 
 export type DaySlots = {
