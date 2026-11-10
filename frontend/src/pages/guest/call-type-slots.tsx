@@ -140,6 +140,15 @@ export function CallTypeSlots() {
     await reload()
   }
 
+  // Сообщение последней неудачной Записи (конфликт занятости) — один
+  // рендер на обе точки показа: пустое состояние Окна и колонку
+  // Записи (ветки взаимоисключающие, на экране — максимум один).
+  const bookingErrorAlert = bookingError ? (
+    <p role="alert" className="text-destructive text-sm">
+      {bookingError}
+    </p>
+  ) : null
+
   if (confirmed) {
     return (
       <div className="flex min-h-svh items-center justify-center p-6">
@@ -233,11 +242,7 @@ export function CallTypeSlots() {
 
         {days.length === 0 && !error ? (
           <div className="flex flex-col gap-2">
-            {bookingError ? (
-              <p role="alert" className="text-destructive text-sm">
-                {bookingError}
-              </p>
-            ) : null}
+            {bookingErrorAlert}
             <p className="text-muted-foreground text-sm">Свободных Слотов нет.</p>
           </div>
         ) : (
@@ -312,11 +317,7 @@ export function CallTypeSlots() {
                 </p>
               )}
 
-              {bookingError ? (
-                <p role="alert" className="text-destructive text-sm">
-                  {bookingError}
-                </p>
-              ) : null}
+              {bookingErrorAlert}
 
               <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                 <div className="flex flex-col gap-2">

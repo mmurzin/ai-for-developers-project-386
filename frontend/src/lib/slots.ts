@@ -101,7 +101,8 @@ export function dayKeyToDate(key: string): Date {
 }
 
 // dateToDayKey — ключ дня из даты календаря (локальные геттеры —
-// зеркало dayKeyToDate).
+// зеркало dayKeyToDate). Зеркало dayKey из e2e/dates.ts: общий
+// модуль невозможен (e2e живёт без package.json) — менять парой.
 export function dateToDayKey(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -111,7 +112,9 @@ export function dateToDayKey(date: Date): string {
 
 // calendarMonthRange — границы навигации по месяцам: месяц первого
 // доступного дня … месяц последнего. Окно записи занимает максимум
-// два месяца, дальше календарь не листается.
+// два месяца, дальше календарь не листается. Порядок входа не важен:
+// границы — min и max по самим ключам («YYYY-MM-DD» сравнивается
+// лексикографически как календарная дата).
 export function calendarMonthRange(dayKeys: string[]): {
   startMonth: Date
   endMonth: Date
@@ -119,8 +122,9 @@ export function calendarMonthRange(dayKeys: string[]): {
   if (dayKeys.length === 0) {
     return undefined
   }
-  const first = dayKeyToDate(dayKeys[0]!)
-  const last = dayKeyToDate(dayKeys[dayKeys.length - 1]!)
+  const sorted = [...dayKeys].sort()
+  const first = dayKeyToDate(sorted[0]!)
+  const last = dayKeyToDate(sorted[sorted.length - 1]!)
   return {
     startMonth: new Date(first.getFullYear(), first.getMonth(), 1),
     endMonth: new Date(last.getFullYear(), last.getMonth() + 1, 0),

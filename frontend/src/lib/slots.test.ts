@@ -82,6 +82,41 @@ test("firstAvailableDayKey — первый из доступных дней, б
   expect(firstAvailableDayKey([])).toBeUndefined()
 })
 
+// windowSlots — по одному Слоту на каждый из `days` дней начиная с
+// ключа `startKey`: имитация посева Окна записи без привязки к «сегодня».
+function windowSlots(startKey: string, days: number) {
+  const start = dayKeyToDate(startKey)
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date(start)
+    date.setDate(date.getDate() + i)
+    const key = dateToDayKey(date)
+    return slot(`${key}T09:00:00+03:00`, `${key}T09:30:00+03:00`)
+  })
+}
+
+// Окно записи — всегда 14 календарных дней и может лечь на два
+// месяца. Независимая истина: в ноябре 30 дней, значит Окно
+// 2026-11-18..2026-12-01 — это 13 дней ноября (18…30) плюс 1 декабря.
+// Даты фиксированы явно: хелперы «сегодня» не знают.
+test("availableDayKeys даёт 14 дней Окна, пересекающего границу месяцев", () => {
+  const keys = availableDayKeys(windowSlots("2026-11-18", 14))
+
+  expect(keys).toHaveLength(14)
+  expect(keys[0]).toBe("2026-11-18")
+  expect(keys[13]).toBe("2026-12-01")
+})
+
+// То же Окно в календарных границах: навигация заперта в ноябре–декабре.
+// Вход подан в обратном порядке — порядок не является частью контракта.
+test("calendarMonthRange Окна через границу месяцев — ноябрь и декабрь", () => {
+  const keys = availableDayKeys(windowSlots("2026-11-18", 14)).reverse()
+
+  expect(calendarMonthRange(keys)).toEqual({
+    startMonth: dayKeyToDate("2026-11-01"),
+    endMonth: dayKeyToDate("2026-12-31"),
+  })
+})
+
 // Ключ дня «YYYY-MM-DD» — календарная дата в зоне инстанса. Дата для
 // календаря собирается из компонент ключа (не из new Date(строка):
 // дата-строки парсятся как UTC-полночь и сдвигают день в другой зоне).
@@ -107,6 +142,18 @@ test("calendarMonthRange в одном месяце — от первого до
 // Окно записи пересекает границу месяцев — максимум два месяца навигации.
 test("calendarMonthRange через границу месяцев — два месяца", () => {
   expect(calendarMonthRange(["2026-11-25", "2026-12-08"])).toEqual({
+    startMonth: dayKeyToDate("2026-11-01"),
+    endMonth: dayKeyToDate("2026-12-31"),
+  })
+})
+
+// Границы — min/max по самим ключам, а не первый/последний элемент:
+// день с меньшим ключом может прийти позже (группировка сохраняет
+// порядок ответа, сортировка — забота самой функции). «YYYY-MM-DD»
+// сравнивается лексикографически как календарная дата.
+// 18..30 ноября = 13 дней + 1 декабря: границы — ноябрь и декабрь.
+test("calendarMonthRange не зависит от порядка дней на входе", () => {
+  expect(calendarMonthRange(["2026-12-01", "2026-11-18", "2026-11-30"])).toEqual({
     startMonth: dayKeyToDate("2026-11-01"),
     endMonth: dayKeyToDate("2026-12-31"),
   })
