@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, test, vi } from "vitest"
 import { MemoryRouter } from "react-router"
 
@@ -134,11 +134,12 @@ test("навигация месяцами не выходит за предел�
   expect(screen.getByText("ноябрь 2026")).toBeInTheDocument()
 })
 
-test("клик по доступному дню переключает колонку Слотов и сбрасывает выбор Слота", async () => {
+test("клик по другому Слоту или дню заменяет выбор", async () => {
   vi.spyOn(client, "get").mockResolvedValue(
     okResponse(200, {
       items: [
         { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+        { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
         { startsAt: "2026-11-06T10:00:00+03:00", endsAt: "2026-11-06T10:30:00+03:00" },
       ],
     }) as never,
@@ -147,27 +148,41 @@ test("клик по доступному дню переключает коло�
   const { container } = renderSlotsPage()
   await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
 
+  // Первый выбор: 09:00.
   fireEvent.click(screen.getByRole("button", { name: "09:00 (+03:00)" }))
   expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toHaveAttribute(
     "aria-pressed",
     "true",
   )
-  expect(screen.getByRole("button", { name: "Записаться" })).toBeInTheDocument()
 
+  // Клик по другому времени того же дня заменяет выбор: сводка
+  // обновляется на новый интервал.
+  fireEvent.click(screen.getByRole("button", { name: "09:30 (+03:00)" }))
+  expect(screen.getByRole("button", { name: "09:30 (+03:00)" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  )
+  expect(screen.getByTestId("booking-summary")).toHaveTextContent(
+    "09:30 (+03:00) – 10:00 (+03:00)",
+  )
+
+  // Клик по другому дню тоже заменяет выбор: Слот сброшен, форма
+  // снова неактивна, сводка — подсказка. Форма при этом не исчезает.
   fireEvent.click(dayButton(container, "2026-11-06"))
-  expect(
-    screen.getByRole("heading", { name: "Пятница, 6 ноября" }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole("heading", { name: "Пятница, 6 ноября" })).toBeInTheDocument()
   expect(screen.getByRole("button", { name: "10:00 (+03:00)" })).toBeInTheDocument()
   expect(
     screen.queryByRole("button", { name: "09:00 (+03:00)" }),
   ).not.toBeInTheDocument()
-  // Смена дня сбрасывает выбранный Слот: форма Записи спрятана.
-  expect(
-    screen.queryByRole("button", { name: "Записаться" }),
-  ).not.toBeInTheDocument()
+  expect(screen.getByTestId("booking-summary")).toHaveTextContent("Слот не выбран")
+  expect(screen.getByLabelText("Имя")).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeDisabled()
 
-  // Возврат к первому дню: Слоты на месте, выбор сброшен.
+  // Возврат к первому дню: Слоты на месте, выбора нет.
   fireEvent.click(dayButton(container, "2026-11-05"))
   expect(screen.getByRole("button", { name: "09:00 (+03:00)" })).toHaveAttribute(
     "aria-pressed",
@@ -192,6 +207,62 @@ test("неизвестный тип звонка — понятное сообщ
     "href",
     "/",
   )
+})
+
+test("форма Записи видна всегда, но до выбора Слота неактивна", async () => {
+  vi.spyOn(client, "get").mockResolvedValue(
+    okResponse(200, {
+      items: [
+        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+        { startsAt: "2026-11-05T09:30:00+03:00", endsAt: "2026-11-05T10:00:00+03:00" },
+      ],
+    }) as never,
+  )
+
+  renderSlotsPage()
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+
+  // Колонка Записи и форма видны с первого взгляда...
+  expect(screen.getByLabelText("Имя")).toBeInTheDocument()
+  expect(screen.getByLabelText("Контакт")).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeInTheDocument()
+  // ...но поля и кнопка неактивны, пока Гость не выбрал Слот.
+  expect(screen.getByLabelText("Имя")).toBeDisabled()
+  expect(screen.getByLabelText("Контакт")).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeDisabled()
+  // Сводки выбора ещё нет: вместо неё подсказка.
+  expect(screen.getByText("Слот не выбран")).toBeInTheDocument()
+  // Кнопки сброса выбора нет: выбор заменяется кликом по другому времени.
+  expect(
+    screen.queryByRole("button", { name: "Выбрать другое время" }),
+  ).not.toBeInTheDocument()
+})
+
+test("выбор Слота активирует форму и показывает сводку выбора", async () => {
+  vi.spyOn(client, "get").mockResolvedValue(
+    okResponse(200, {
+      items: [
+        { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:30:00+03:00" },
+      ],
+    }) as never,
+  )
+
+  renderSlotsPage()
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+
+  fireEvent.click(screen.getByRole("button", { name: "09:00 (+03:00)" }))
+
+  // Форма активируется выбором Слота.
+  expect(screen.getByLabelText("Имя")).toBeEnabled()
+  expect(screen.getByLabelText("Контакт")).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeEnabled()
+
+  // Сводка выбора: дата, интервал с явными смещениями, длительность
+  // из границ Слота (без запросов).
+  const summary = screen.getByTestId("booking-summary")
+  expect(summary).toHaveTextContent("Четверг, 5 ноября")
+  expect(summary).toHaveTextContent("09:00 (+03:00) – 09:30 (+03:00)")
+  expect(summary).toHaveTextContent("30 минут")
 })
 
 test("гость записывается на Слот и видит подтверждение с деталями Записи", async () => {
@@ -282,7 +353,16 @@ test("конфликт занятости: понятное сообщение �
   })
   fireEvent.click(screen.getByRole("button", { name: "Записаться" }))
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("уже занято")
+  // Сообщение о конфликте — в колонке формы Записи.
+  const formColumn = screen.getByRole("region", { name: "Запись на Слот" })
+  expect(await within(formColumn).findByRole("alert")).toHaveTextContent("уже занято")
+
+  // Выбор сброшен: форма снова неактивна, сводка — подсказка.
+  expect(screen.getByLabelText("Имя")).toBeDisabled()
+  expect(screen.getByLabelText("Контакт")).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Записаться" })).toBeDisabled()
+  expect(screen.getByTestId("booking-summary")).toHaveTextContent("Слот не выбран")
+
   // Список обновился: занятый Слот исчез, соседний остался.
   await waitFor(() =>
     expect(

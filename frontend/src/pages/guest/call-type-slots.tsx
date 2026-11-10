@@ -16,6 +16,7 @@ import {
   formatDayLabel,
   formatSlotTime,
   groupSlotsByDay,
+  slotDurationMinutes,
   useSlots,
 } from "@/lib/slots"
 
@@ -29,9 +30,11 @@ const EMPTY_FORM = {
 // вертикальная стопка в том же порядке). Сетка вычислена API (Окно
 // записи, Рабочие часы), время — с явным смещением часового пояса.
 // Первый доступный день выбирается автоматически; в календаре
-// недоступны дни вне Окна и дни без Слотов. Клик по Слоту открывает
-// форму Записи (имя, контакт); 201 — экран подтверждения, конфликт —
-// понятное сообщение и свежий список Слотов без занятого.
+// недоступны дни вне Окна и дни без Слотов. Колонка Записи видна
+// всегда: до выбора Слота поля неактивны, над формой — сводка выбора
+// (дата, интервал, длительность из границ Слота). 201 — экран
+// подтверждения, конфликт — понятное сообщение и свежий список
+// Слотов без занятого.
 export function CallTypeSlots() {
   const { id = "" } = useParams()
   const { items, error, notFound, reload } = useSlots(id)
@@ -208,11 +211,6 @@ export function CallTypeSlots() {
             {error}
           </p>
         ) : null}
-        {bookingError ? (
-          <p role="alert" className="text-destructive text-sm">
-            {bookingError}
-          </p>
-        ) : null}
 
         {days.length === 0 && !error ? (
           <p className="text-muted-foreground text-sm">Свободных Слотов нет.</p>
@@ -270,53 +268,64 @@ export function CallTypeSlots() {
               </ul>
             </section>
 
-            {selected ? (
-              <section
-                className="flex flex-col gap-4 rounded-lg border p-6"
-                aria-label="Запись на Слот"
-              >
-                <h2 className="text-lg font-medium">Запись на Слот</h2>
-                <p className="text-muted-foreground text-sm" data-testid="selected-slot">
+            <section
+              className="flex flex-col gap-4 rounded-lg border p-6"
+              aria-label="Запись на Слот"
+            >
+              <h2 className="text-lg font-medium">Запись на Слот</h2>
+
+              {selected ? (
+                <p className="text-sm" data-testid="booking-summary">
                   {formatDayLabel(selected.startsAt.slice(0, 10))},{" "}
-                  {formatSlotTime(selected.startsAt)} – {formatSlotTime(selected.endsAt)}
+                  {formatSlotTime(selected.startsAt)} – {formatSlotTime(selected.endsAt)} ·{" "}
+                  {slotDurationMinutes(selected)} минут
                 </p>
+              ) : (
+                <p className="text-muted-foreground text-sm" data-testid="booking-summary">
+                  Слот не выбран
+                </p>
+              )}
 
-                <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="guest-name">Имя</Label>
-                    <Input
-                      id="guest-name"
-                      value={form.guestName}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, guestName: event.target.value }))
-                      }
-                      placeholder="Как к вам обращаться"
-                      required
-                    />
-                  </div>
+              {bookingError ? (
+                <p role="alert" className="text-destructive text-sm">
+                  {bookingError}
+                </p>
+              ) : null}
 
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="guest-contact">Контакт</Label>
-                    <Input
-                      id="guest-contact"
-                      value={form.guestContact}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, guestContact: event.target.value }))
-                      }
-                      placeholder="Email или телефон для связи"
-                      required
-                    />
-                  </div>
+              <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="guest-name">Имя</Label>
+                  <Input
+                    id="guest-name"
+                    value={form.guestName}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, guestName: event.target.value }))
+                    }
+                    placeholder="Как к вам обращаться"
+                    required
+                    disabled={!selected}
+                  />
+                </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="submit">Записаться</Button>
-                    <Button type="button" variant="ghost" onClick={resetBooking}>
-                      Выбрать другое время
-                    </Button>
-                  </div>
-                </form>
-              </section>
-            ) : null}
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="guest-contact">Контакт</Label>
+                  <Input
+                    id="guest-contact"
+                    value={form.guestContact}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, guestContact: event.target.value }))
+                    }
+                    placeholder="Email или телефон для связи"
+                    required
+                    disabled={!selected}
+                  />
+                </div>
+
+                <Button type="submit" disabled={!selected}>
+                  Записаться
+                </Button>
+              </form>
+            </section>
           </div>
         )}
       </div>
