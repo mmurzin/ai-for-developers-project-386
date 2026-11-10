@@ -123,6 +123,13 @@ export function calendarMonthRange(dayKeys: string[]): {
   }
 }
 
+// slotDurationMinutes — длительность Слота в минутах из его границ
+// (endsAt − startsAt), без дополнительных запросов. ISO-строки с любым
+// смещением парсятся в моменты времени, разность от зоны не зависит.
+export function slotDurationMinutes(slot: Slot): number {
+  return (new Date(slot.endsAt).getTime() - new Date(slot.startsAt).getTime()) / 60_000
+}
+
 // groupSlotsByDay группирует Слоты по календарным дням зоны инстанса:
 // дата берётся из ISO-строки (первые 10 символов), порядок сохраняется.
 export function groupSlotsByDay(slots: Slot[]): DaySlots[] {

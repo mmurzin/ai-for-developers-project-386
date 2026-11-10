@@ -9,6 +9,7 @@ import {
   formatDayLabel,
   formatSlotTime,
   groupSlotsByDay,
+  slotDurationMinutes,
 } from "@/lib/slots"
 
 const slot = (startsAt: string, endsAt: string) => ({ startsAt, endsAt })
@@ -44,6 +45,15 @@ test("formatDayLabel подписывает день недели и месяц 
 test("formatSlotTime показывает время с явным смещением", () => {
   expect(formatSlotTime("2026-11-05T09:00:00+03:00")).toBe("09:00 (+03:00)")
   expect(formatSlotTime("2026-11-05T17:45:00+03:00")).toBe("17:45 (+03:00)")
+})
+
+// Длительность — из границ Слота (endsAt − startsAt), без запросов.
+// Длительности Типов звонка — независимая истина: 15 и 30 минут сеются
+// дефолтными Типами (#26); слот через полночь — 23:45…00:00 = 15 минут.
+test("slotDurationMinutes считает минуты из границ Слота", () => {
+  expect(slotDurationMinutes(slot("2026-11-05T09:00:00+03:00", "2026-11-05T09:30:00+03:00"))).toBe(30)
+  expect(slotDurationMinutes(slot("2026-11-05T09:00:00+03:00", "2026-11-05T09:15:00+03:00"))).toBe(15)
+  expect(slotDurationMinutes(slot("2026-11-05T23:45:00+03:00", "2026-11-06T00:00:00+03:00"))).toBe(15)
 })
 
 // Доступность дня для календаря: день есть в списке Слотов = доступен.
