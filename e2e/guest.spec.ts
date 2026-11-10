@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { dayKey, firstWindowDay, windowDaysInFirstMonth } from "./dates"
+import { addDays, dayKey, firstWindowDay, windowDaysInFirstMonth } from "./dates"
 
 // Сквозной сценарий #15: Гость открывает главную, выбирает Тип звонка
 // и видит календарь выбора дня с вычисленными Слотами. Тип не сеется
@@ -66,8 +66,44 @@ test("гость записывается на Слот и видит подтв
   await expect(page.getByLabel("Контакт")).toBeDisabled()
   await expect(page.getByRole("button", { name: "Записаться" })).toBeDisabled()
 
-  // Первый день Окна выбран автоматически: первый Слот — 09:00 (+03:00).
-  await daySlots.getByRole("button", { name: "09:00 (+03:00)" }).click()
+  // Клавиатурная доставка «день → время → форма» без мыши. Дни
+  // календаря и времена — настоящие кнопки: фокус ставим явно
+  // (focus()), выбор — Enter (нативное поведение кнопки; стрелочную
+  // навигацию самой библиотеки не трогаем). Проверяем выбор на
+  // втором дне Окна и возвращаемся к первому — Запись останется на
+  // нём, как в исходном сценарии.
+  const first = firstWindowDay()
+  const second = addDays(first, 1)
+  const sameMonth =
+    first.getFullYear() === second.getFullYear() && first.getMonth() === second.getMonth()
+  if (!sameMonth) {
+    // Второй день Окна — уже в следующем месяце: и календарь
+    // листаем с клавиатуры (Enter по кнопке навигации).
+    await page.getByRole("button", { name: "Перейти к следующему месяцу" }).focus()
+    await page.keyboard.press("Enter")
+  }
+  await page.locator(`td[data-day="${dayKey(second)}"] button`).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("gridcell", { selected: true })).toHaveAttribute(
+    "data-day",
+    dayKey(second),
+  )
+
+  // Возврат к первому дню Окна тем же способом.
+  if (!sameMonth) {
+    await page.getByRole("button", { name: "Перейти к предыдущему месяцу" }).focus()
+    await page.keyboard.press("Enter")
+  }
+  await page.locator(`td[data-day="${dayKey(first)}"] button`).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("gridcell", { selected: true })).toHaveAttribute(
+    "data-day",
+    dayKey(first),
+  )
+
+  // Слот — тоже клавишей: первый старт дня — 09:00 (+03:00).
+  await daySlots.getByRole("button", { name: "09:00 (+03:00)" }).focus()
+  await page.keyboard.press("Enter")
 
   // Выбор активирует форму; сводка — интервал со смещениями и
   // длительность из границ Слота, без дополнительных запросов.
@@ -79,7 +115,9 @@ test("гость записывается на Слот и видит подтв
 
   await page.getByLabel("Имя").fill("Миша")
   await page.getByLabel("Контакт").fill("guest@example.com")
-  await page.getByRole("button", { name: "Записаться" }).click()
+  // Отправка формы — тоже с клавиатуры: Enter в поле ввода (нативная
+  // отправка формы с кнопкой submit).
+  await page.getByLabel("Контакт").press("Enter")
 
   // Подтверждение с деталями Записи: тип, время, имя.
   await expect(page.getByRole("heading", { name: "Запись подтверждена" })).toBeVisible()
