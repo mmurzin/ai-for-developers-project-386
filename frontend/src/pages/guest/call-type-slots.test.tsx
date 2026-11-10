@@ -353,6 +353,29 @@ test("конфликт, опустошивший выбранный день, п
   expect(await within(formColumn).findByRole("alert")).toHaveTextContent("уже занято")
 })
 
+test("конфликт, опустошивший всё Окно: сообщение остаётся, экран не падает", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [{ startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" }],
+      }),
+      // Конфликт забрал последний Слот Окна — свободных дней нет.
+      okResponse(200, { items: [] }),
+    ],
+  })
+  mockConflict409()
+  renderSlotsPage()
+
+  fireEvent.click(await screen.findByRole("button", { name: "09:00 (+03:00)" }))
+  submitBookingForm()
+
+  // Экран не падает: пустое состояние Окна без Слотов…
+  expect(await screen.findByText("Свободных Слотов нет.")).toBeInTheDocument()
+  // …но Гость по-прежнему видит, что произошло: сообщение конфликта
+  // не теряется вместе с колонками.
+  expect(await screen.findByRole("alert")).toHaveTextContent("уже занято")
+})
+
 test("неизвестный тип звонка — понятное сообщение и путь назад", async () => {
   // Список Типов звонка отвечает успешно и знает «intro», но 404
   // Слотов важнее: экран «не найден» целиком заменяет шапку.

@@ -223,7 +223,14 @@ export function CallTypeSlots() {
         ) : null}
 
         {days.length === 0 && !error ? (
-          <p className="text-muted-foreground text-sm">Свободных Слотов нет.</p>
+          <div className="flex flex-col gap-2">
+            {bookingError ? (
+              <p role="alert" className="text-destructive text-sm">
+                {bookingError}
+              </p>
+            ) : null}
+            <p className="text-muted-foreground text-sm">Свободных Слотов нет.</p>
+          </div>
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-[auto_minmax(240px,1fr)_minmax(320px,400px)]">
             <section
