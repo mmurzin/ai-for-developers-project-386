@@ -111,7 +111,9 @@ export function dateToDayKey(date: Date): string {
 
 // calendarMonthRange — границы навигации по месяцам: месяц первого
 // доступного дня … месяц последнего. Окно записи занимает максимум
-// два месяца, дальше календарь не листается.
+// два месяца, дальше календарь не листается. Порядок входа не важен:
+// границы — min и max по самим ключам («YYYY-MM-DD» сравнивается
+// лексикографически как календарная дата).
 export function calendarMonthRange(dayKeys: string[]): {
   startMonth: Date
   endMonth: Date
@@ -119,8 +121,9 @@ export function calendarMonthRange(dayKeys: string[]): {
   if (dayKeys.length === 0) {
     return undefined
   }
-  const first = dayKeyToDate(dayKeys[0]!)
-  const last = dayKeyToDate(dayKeys[dayKeys.length - 1]!)
+  const sorted = [...dayKeys].sort()
+  const first = dayKeyToDate(sorted[0]!)
+  const last = dayKeyToDate(sorted[sorted.length - 1]!)
   return {
     startMonth: new Date(first.getFullYear(), first.getMonth(), 1),
     endMonth: new Date(last.getFullYear(), last.getMonth() + 1, 0),
