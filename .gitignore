@@ -1,4 +1,6 @@
 .DS_Store
+# IDE-мусор (JetBrains) — не тащить настройки редактора в репо
+.idea/
 node_modules/
 
 # typespec: emit сконфигурирован прямо в api/, но соседние эмиттеры
