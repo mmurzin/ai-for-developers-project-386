@@ -376,6 +376,51 @@ test("конфликт, опустошивший всё Окно: сообщен
   expect(await screen.findByRole("alert")).toHaveTextContent("уже занято")
 })
 
+test("после конфликта календарь листается к месяцу автовыбранного дня", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+          { startsAt: "2026-11-06T10:30:00+03:00", endsAt: "2026-11-06T10:45:00+03:00" },
+          { startsAt: "2026-12-01T11:00:00+03:00", endsAt: "2026-12-01T11:15:00+03:00" },
+        ],
+      }),
+      // День 6 ноября опустел после конфликта: остались 5 ноября
+      // и 1 декабря.
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+          { startsAt: "2026-12-01T11:00:00+03:00", endsAt: "2026-12-01T11:15:00+03:00" },
+        ],
+      }),
+    ],
+  })
+  mockConflict409()
+  const { container } = renderSlotsPage()
+
+  // Гость выбрал день 6 ноября и листнул календарь в декабрь.
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+  fireEvent.click(dayButton(container, "2026-11-06"))
+  fireEvent.click(screen.getByRole("button", { name: "Перейти к следующему месяцу" }))
+  expect(screen.getByText("декабрь 2026")).toBeInTheDocument()
+
+  // Запись на Слот дня 6 ноября (колонка Слотов не зависит от
+  // показанного месяца) упирается в конфликт.
+  fireEvent.click(screen.getByRole("button", { name: "10:30 (+03:00)" }))
+  submitBookingForm()
+
+  // Автовыбор переключился на первый доступный день — и календарь
+  // вернулся к месяцу этого дня, а не остался в декабре.
+  expect(await screen.findByRole("heading", { name: "Четверг, 5 ноября" })).toBeInTheDocument()
+  expect(screen.getByText("ноябрь 2026")).toBeInTheDocument()
+  expect(screen.getByRole("gridcell", { selected: true })).toHaveAttribute(
+    "data-day",
+    "2026-11-05",
+  )
+  expect(dayCell(container, "2026-11-06")).toHaveAttribute("data-disabled", "true")
+})
+
 test("неизвестный тип звонка — понятное сообщение и путь назад", async () => {
   // Список Типов звонка отвечает успешно и знает «intro», но 404
   // Слотов важнее: экран «не найден» целиком заменяет шапку.
