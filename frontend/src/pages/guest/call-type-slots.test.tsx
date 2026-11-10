@@ -58,6 +58,22 @@ function mockConflict409() {
   )
 }
 
+// mockBookingCreated — успешный ответ создания Записи (201) на Слот
+// с границами startsAt/endsAt.
+function mockBookingCreated(startsAt: string, endsAt: string) {
+  return vi.spyOn(client, "post").mockResolvedValue(
+    okResponse(201, {
+      callTypeId: "intro",
+      callTypeName: "Интро-звонок",
+      durationMinutes: 15,
+      startsAt,
+      endsAt,
+      guestName: "Миша",
+      guestContact: "guest@example.com",
+    }) as never,
+  )
+}
+
 // submitBookingForm — заполнение формы Записи и отправка: общая
 // цепочка тестов конфликта и подтверждения.
 function submitBookingForm() {
@@ -419,6 +435,70 @@ test("после конфликта календарь листается к м�
     "2026-11-05",
   )
   expect(dayCell(container, "2026-11-06")).toHaveAttribute("data-disabled", "true")
+})
+
+test("«Записаться ещё раз» перезагружает Слоты и автовыбирает первый доступный день", async () => {
+  const get = mockGet({
+    slots: [
+      okResponse(200, {
+        items: [
+          { startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" },
+          { startsAt: "2026-11-06T10:30:00+03:00", endsAt: "2026-11-06T10:45:00+03:00" },
+        ],
+      }),
+      // Запись Гостя заняла Слот дня 6 ноября: после «ещё раз» в
+      // Окне остался только первый день.
+      okResponse(200, {
+        items: [{ startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" }],
+      }),
+    ],
+  })
+  mockBookingCreated("2026-11-06T10:30:00+03:00", "2026-11-06T10:45:00+03:00")
+  const { container } = renderSlotsPage()
+
+  // Гость записался на Слот дня 6 ноября — день выбран явно кликом.
+  await screen.findByRole("heading", { name: "Четверг, 5 ноября" })
+  fireEvent.click(dayButton(container, "2026-11-06"))
+  fireEvent.click(screen.getByRole("button", { name: "10:30 (+03:00)" }))
+  submitBookingForm()
+  expect(
+    await screen.findByRole("heading", { name: "Запись подтверждена" }),
+  ).toBeInTheDocument()
+
+  // Возврат к календарю: Слоты перезагружены, день Записи опустел —
+  // активен первый доступный, выбора нет.
+  fireEvent.click(screen.getByRole("button", { name: "Записаться ещё раз" }))
+  expect(await screen.findByRole("heading", { name: "Четверг, 5 ноября" })).toBeInTheDocument()
+  expect(screen.getByRole("gridcell", { selected: true })).toHaveAttribute(
+    "data-day",
+    "2026-11-05",
+  )
+  expect(dayCell(container, "2026-11-06")).toHaveAttribute("data-disabled", "true")
+  expect(screen.getByTestId("booking-summary")).toHaveTextContent("Слот не выбран")
+  // Три GET: список Типов звонка + Слоты до Записи и после «ещё раз».
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
+})
+
+test("«Записаться ещё раз» при опустевшем Окне показывает пустое состояние", async () => {
+  mockGet({
+    slots: [
+      okResponse(200, {
+        items: [{ startsAt: "2026-11-05T09:00:00+03:00", endsAt: "2026-11-05T09:15:00+03:00" }],
+      }),
+      // Запись Гостя забрала последний Слот Окна.
+      okResponse(200, { items: [] }),
+    ],
+  })
+  mockBookingCreated("2026-11-05T09:00:00+03:00", "2026-11-05T09:15:00+03:00")
+  renderSlotsPage()
+
+  fireEvent.click(await screen.findByRole("button", { name: "09:00 (+03:00)" }))
+  submitBookingForm()
+  fireEvent.click(await screen.findByRole("button", { name: "Записаться ещё раз" }))
+
+  // Экран не падает: Окно пусто, Гость видит пустое состояние.
+  expect(await screen.findByText("Свободных Слотов нет.")).toBeInTheDocument()
+  expect(screen.getByRole("heading", { name: "Свободные Слоты" })).toBeInTheDocument()
 })
 
 test("неизвестный тип звонка — понятное сообщение и путь назад", async () => {
