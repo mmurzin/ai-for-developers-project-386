@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test"
 
+import { dayKey, firstWindowDay, windowDaysInFirstMonth } from "./dates"
+
 // Сквозной сценарий #15: Гость открывает главную, выбирает Тип звонка
-// и видит календарь вычисленных Слотов. Тип не сеется сценарием:
-// «Консультация» — дефолтный Тип звонка, посеянный сервером при старте
-// на пустой базе (#26); создание через UI закрыто admin.spec.ts.
+// и видит календарь выбора дня с вычисленными Слотами. Тип не сеется
+// сценарием: «Консультация» — дефолтный Тип звонка, посеянный сервером
+// при старте на пустой базе (#26); создание через UI закрыто admin.spec.ts.
 
 test("гость выбирает тип звонка и видит календарь слотов", async ({ page }) => {
   await page.goto("/")
@@ -13,15 +15,27 @@ test("гость выбирает тип звонка и видит календ
   await expect(page.getByRole("heading", { name: "Свободные Слоты" })).toBeVisible()
 
   // Окно записи — всегда 14 календарных дней со следующего дня,
-  // включая выходные: групп по дням ровно 14.
-  await expect(page.getByTestId("slot-day")).toHaveCount(14)
+  // включая выходные: в показанном месяце доступны ровно те дни
+  // Окна, что в него попадают (месяц первого доступного дня).
+  const grid = page.getByRole("grid")
+  const enabledDays = grid.getByRole("button", { disabled: false })
+  await expect(enabledDays).toHaveCount(windowDaysInFirstMonth())
 
-  // Сетка первого дня детерминирована: первый старт — 09:00,
-  // для длительности 30 минут последний старт — 17:30.
-  // Время — с явным смещением зоны инстанса (Europe/Moscow, +03:00).
-  const firstDaySlots = page.getByTestId("slot-day").first().locator("li")
-  await expect(firstDaySlots.first()).toHaveText("09:00 (+03:00)")
-  await expect(firstDaySlots.last()).toHaveText("17:30 (+03:00)")
+  // Первый доступный день Окна доступен, сегодняшний (до Окна) — нет.
+  const first = firstWindowDay()
+  await expect(page.locator(`td[data-day="${dayKey(first)}"] button`)).toBeEnabled()
+  const today = new Date()
+  if (today.getMonth() === first.getMonth()) {
+    await expect(page.locator(`td[data-day="${dayKey(today)}"] button`)).toBeDisabled()
+  }
+
+  // Первый доступный день выбран автоматически: сетка его Слотов
+  // детерминирована — первый старт 09:00, для длительности 30 минут
+  // последний старт 17:30. Время — с явным смещением зоны инстанса
+  // (Europe/Moscow, +03:00).
+  const daySlots = page.locator('section[aria-label="Слоты выбранного дня"]')
+  await expect(daySlots.locator("li").first()).toHaveText("09:00 (+03:00)")
+  await expect(daySlots.locator("li").last()).toHaveText("17:30 (+03:00)")
 })
 
 // Сквозной сценарий #16: Гость выбирает Тип звонка, записывается
@@ -35,9 +49,9 @@ test("гость записывается на Слот и видит подтв
   await page.getByRole("link", { name: "Консультация — 30 минут" }).click()
   await expect(page.getByRole("heading", { name: "Свободные Слоты" })).toBeVisible()
 
-  // Первый Слот первого дня Окна записи: 09:00 (+03:00).
-  const firstDay = page.getByTestId("slot-day").first()
-  await firstDay.getByRole("button", { name: "09:00 (+03:00)" }).click()
+  // Первый день Окна выбран автоматически: первый Слот — 09:00 (+03:00).
+  const daySlots = page.locator('section[aria-label="Слоты выбранного дня"]')
+  await daySlots.getByRole("button", { name: "09:00 (+03:00)" }).click()
 
   await page.getByLabel("Имя").fill("Миша")
   await page.getByLabel("Контакт").fill("guest@example.com")
@@ -52,11 +66,12 @@ test("гость записывается на Слот и видит подтв
   await expect(details).toContainText("Миша")
   await expect(details).toContainText("guest@example.com")
 
-  // Назад к календарю: время созданной Записи вырезано из Слотов.
-  // Запись 09:00–09:30 убирает старты 09:00 и 09:15 (каждый заезжает
-  // в интервал), но не 09:30 — примыкающий справа.
+  // Назад к календарю: первый доступный день выбран автоматически,
+  // время созданной Записи вырезано из Слотов. Запись 09:00–09:30
+  // убирает старты 09:00 и 09:15 (каждый заезжает в интервал),
+  // но не 09:30 — примыкающий справа.
   await page.getByRole("button", { name: "Записаться ещё раз" }).click()
-  await expect(firstDay.getByRole("button", { name: "09:00 (+03:00)" })).toHaveCount(0)
-  await expect(firstDay.getByRole("button", { name: "09:15 (+03:00)" })).toHaveCount(0)
-  await expect(firstDay.getByRole("button", { name: "09:30 (+03:00)" })).toBeVisible()
+  await expect(daySlots.getByRole("button", { name: "09:00 (+03:00)" })).toHaveCount(0)
+  await expect(daySlots.getByRole("button", { name: "09:15 (+03:00)" })).toHaveCount(0)
+  await expect(daySlots.getByRole("button", { name: "09:30 (+03:00)" })).toBeVisible()
 })

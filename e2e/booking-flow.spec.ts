@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test"
 
+import { addDays, dayKey, firstWindowDay } from "./dates"
+
 // Замыкающий сквозной сценарий спеки #6 (#17): Владелец создаёт Тип
 // звонка через UI админки → Гость выбирает Слот и создаёт Запись →
 // Запись появляется у Владельца на странице «Предстоящие». Настоящий
@@ -7,8 +9,9 @@ import { expect, test } from "@playwright/test"
 //
 // Изоляция от соседних спек: все они делят один сервер и базу
 // (workers параллельны), guest.spec записывается на первый день —
-// поэтому здесь Запись создаётся в середине Окна записи, а данные
-// Гостя уникальны, чтобы фильтр в предстоящих находил ровно нашу Запись.
+// поэтому здесь Запись создаётся в середине Окна записи (день 8),
+// а данные Гостя уникальны, чтобы фильтр в предстоящих находил
+// ровно нашу Запись.
 
 test("владелец создаёт тип, гость записывается — Запись видна в предстоящих", async ({
   page,
@@ -24,7 +27,7 @@ test("владелец создаёт тип, гость записываетс�
 
   await expect(page.getByText("Стратегическая сессия — 30 минут")).toBeVisible()
 
-  // Гость: главная → календарь Слотов → Запись на Слот в середине Окна.
+  // Гость: главная → календарь Слотов → Запись на день 8 Окна.
   await page.goto("/")
 
   await page
@@ -32,8 +35,20 @@ test("владелец создаёт тип, гость записываетс�
     .click()
   await expect(page.getByRole("heading", { name: "Свободные Слоты" })).toBeVisible()
 
-  const midWindowDay = page.getByTestId("slot-day").nth(7)
-  const slotButton = midWindowDay.locator("li button").first()
+  // День 8 Окна может оказаться в следующем месяце: календарь
+  // показывает месяц первого доступного дня — при необходимости
+  // листаем месяц вперёд, не выходя за пределы Окна.
+  const first = firstWindowDay()
+  const midWindowDay = addDays(first, 7)
+  if (midWindowDay.getMonth() !== first.getMonth()) {
+    await page
+      .getByRole("button", { name: "Перейти к следующему месяцу" })
+      .click()
+  }
+  await page.locator(`td[data-day="${dayKey(midWindowDay)}"] button`).click()
+
+  const daySlots = page.locator('section[aria-label="Слоты выбранного дня"]')
+  const slotButton = daySlots.locator("li button").first()
   const slotTime = await slotButton.textContent()
   expect(slotTime).toBeTruthy()
   await slotButton.click()
