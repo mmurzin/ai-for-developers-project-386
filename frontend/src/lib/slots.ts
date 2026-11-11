@@ -29,12 +29,15 @@ async function fetchSlots(callTypeId: string): Promise<SlotsResult> {
 
 // useSlots — Слоты Типа звонка через сгенерированный hey-api клиент.
 // 404 (тип не найден) отражается как notFound, остальные ошибки — текстом.
-// reload — повторная загрузка: после конфликта занятости занятый Слот
-// должен исчезнуть из списка.
+// loaded — успешный ответ Слотов уже применён (для шапки: строка Типа
+// звонка появляется, только когда есть оба ответа). reload — повторная
+// загрузка: после конфликта занятости занятый Слот должен исчезнуть
+// из списка.
 export function useSlots(callTypeId: string) {
   const [items, setItems] = useState<Slot[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
   const [notFound, setNotFound] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const apply = useCallback((result: SlotsResult) => {
     if (result.kind === "error") {
@@ -45,6 +48,7 @@ export function useSlots(callTypeId: string) {
     setNotFound(false)
     setError(undefined)
     setItems(result.items)
+    setLoaded(true)
   }, [])
 
   // setState — только в .then-колбэках, не в теле эффекта
@@ -65,13 +69,73 @@ export function useSlots(callTypeId: string) {
     apply(await fetchSlots(callTypeId))
   }, [callTypeId, apply])
 
-  return { items, error, notFound, reload }
+  return { items, error, notFound, loaded, reload }
 }
 
 export type DaySlots = {
   key: string
   label: string
   slots: Slot[]
+}
+
+// availableDayKeys — уникальные ключи дней («YYYY-MM-DD») из списка
+// Слотов в календарном порядке. День есть в списке = день доступен
+// в календаре; отдельных запросов доступность не требует.
+export function availableDayKeys(slots: Slot[]): string[] {
+  return Array.from(new Set(slots.map((slot) => slot.startsAt.slice(0, 10)))).sort()
+}
+
+// firstAvailableDayKey — ключ первого доступного дня: автовыбор при
+// загрузке экрана. Без Слотов — undefined.
+export function firstAvailableDayKey(slots: Slot[]): string | undefined {
+  return availableDayKeys(slots)[0]
+}
+
+// dayKeyToDate — календарная дата из ключа дня «YYYY-MM-DD»: полночь
+// локальной зоны, как ожидает react-day-picker (работает локальными
+// геттерами). Компоненты даты собираем явно, не new Date(строка):
+// дата-строки парсятся как UTC-полночь и сдвигают день в другой зоне.
+export function dayKeyToDate(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+// dateToDayKey — ключ дня из даты календаря (локальные геттеры —
+// зеркало dayKeyToDate). Зеркало dayKey из e2e/dates.ts: общий
+// модуль невозможен (e2e живёт без package.json) — менять парой.
+export function dateToDayKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+// calendarMonthRange — границы навигации по месяцам: месяц первого
+// доступного дня … месяц последнего. Окно записи занимает максимум
+// два месяца, дальше календарь не листается. Порядок входа не важен:
+// границы — min и max по самим ключам («YYYY-MM-DD» сравнивается
+// лексикографически как календарная дата).
+export function calendarMonthRange(dayKeys: string[]): {
+  startMonth: Date
+  endMonth: Date
+} | undefined {
+  if (dayKeys.length === 0) {
+    return undefined
+  }
+  const sorted = [...dayKeys].sort()
+  const first = dayKeyToDate(sorted[0]!)
+  const last = dayKeyToDate(sorted[sorted.length - 1]!)
+  return {
+    startMonth: new Date(first.getFullYear(), first.getMonth(), 1),
+    endMonth: new Date(last.getFullYear(), last.getMonth() + 1, 0),
+  }
+}
+
+// slotDurationMinutes — длительность Слота в минутах из его границ
+// (endsAt − startsAt), без дополнительных запросов. ISO-строки с любым
+// смещением парсятся в моменты времени, разность от зоны не зависит.
+export function slotDurationMinutes(slot: Slot): number {
+  return (new Date(slot.endsAt).getTime() - new Date(slot.startsAt).getTime()) / 60_000
 }
 
 // groupSlotsByDay группирует Слоты по календарным дням зоны инстанса:
