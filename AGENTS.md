@@ -12,7 +12,7 @@
 - `mise run test` — gotestsum; один тест: `mise x -- go test ./tests/smoke/ -v -run TestAppStartup`
 - `mise run frontend-test` / `frontend-build` / `frontend-install`
 - `mise run e2e` — Playwright-сценарии из `e2e/` против настоящего сервера: собирает прод-бинарь целиком (фронт → embed → `go build`), поднимает его на `:8099` с throwaway-базой `tmp/e2e.db` (каждый прогон на чистой). `e2e-install` — установка браузеров (идемпотентно, no-op если на месте); `e2e-junit` — то же с junit-отчётом в `reports/`
-- `mise run build` — прод-бинарь целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`)
+- `mise run build` — прод-сборка целиком: сборка фронта → копия в `internal/web/dist` → `go build ./...` (фронт зашит в бинарь через `go:embed`, SPA-фолбэк для клиентских роутов в `internal/web`). Запускаемый бинарь не остаётся — `go build ./...` при мультипакетном паттерне отбрасывает артефакты; нужен бинарь — `mise x -- go build -o tmp/server ./cmd/server`
 - `mise run docker-build` — сборка Docker-образа (без push); в `check` не входит — требует запущенного Docker-демона, но шаг есть в CI
 - `mise run test-junit` / `frontend-test-junit` / `e2e-junit` — те же тесты, но с junit-отчётами в `reports/`; CI публикует их артифактами
 - `mise run generate` — весь design-first пайплайн: `api/**/*.tsp` → `api/openapi.yaml` (tsp) → `internal/api/openapi.gen.go` (oapi-codegen) → `frontend/src/api/` (hey-api). См. секцию «API: design-first»
@@ -47,6 +47,7 @@
 - `feat` → minor, `fix` → patch; breaking changes — `!` после типа или футер `BREAKING CHANGE: ...`
 - Будущий деплой по тегам `v*` будет опираться на историю коммитов (semver)
 - **Коммиты реализации ссылаются на тикеты**: номер в заголовке — `feat(api): типы звонков через весь стек (#14)`. Без тикета — только доки/хор
+- Служебные заголовки хук пропускает: `Merge ...` (мердж ветки — `Merge branch '<name>': <описание>`), `Revert ...`, `chore(main): release ...`; всё остальное проверяется по правилам выше
 
 ## Ветки, PR и релизы
 
