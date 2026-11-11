@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/mmurzin/ai-for-developers-project-386/compare/v0.3.0...v0.4.0) (2026-11-11)
+
+
+### Features
+
+* **frontend:** возвращать календарь к активному дню после конфликта ([#35](https://github.com/mmurzin/ai-for-developers-project-386/issues/35)) ([769b415](https://github.com/mmurzin/ai-for-developers-project-386/commit/769b415e22a1d9f406acb88e50a2696182dc0a6f))
+* **frontend:** показывать Тип звонка и длительность в шапке экрана Слотов ([#34](https://github.com/mmurzin/ai-for-developers-project-386/issues/34)) ([3c94991](https://github.com/mmurzin/ai-for-developers-project-386/commit/3c9499199368f6b86fc732eb00f0be9a4aa4b87a))
+* **frontend:** постоянная форма Записи со сводкой выбора ([#33](https://github.com/mmurzin/ai-for-developers-project-386/issues/33)) ([bd16a54](https://github.com/mmurzin/ai-for-developers-project-386/commit/bd16a548b45385e7e15609cec2799cea6e755ea1))
+* **frontend:** сохранять сообщение конфликта при опустевшем Окне записи ([#35](https://github.com/mmurzin/ai-for-developers-project-386/issues/35)) ([58b9a23](https://github.com/mmurzin/ai-for-developers-project-386/commit/58b9a236b6200ed0c4ee1ef42e13f9e3253e44c6))
+* **frontend:** считать длительность Слота из его границ ([#33](https://github.com/mmurzin/ai-for-developers-project-386/issues/33)) ([3a090b2](https://github.com/mmurzin/ai-for-developers-project-386/commit/3a090b2c2f7a603a377abe62d19a0bf170278861))
+* **frontend:** чистые хелперы календаря в lib/slots ([#32](https://github.com/mmurzin/ai-for-developers-project-386/issues/32)) ([8983dc9](https://github.com/mmurzin/ai-for-developers-project-386/commit/8983dc9ea5e46d961436cad36ac8282ac5af90e1))
+* **frontend:** экран Слотов в три колонны с календарём выбора дня ([#32](https://github.com/mmurzin/ai-for-developers-project-386/issues/32)) ([5cc9fbf](https://github.com/mmurzin/ai-for-developers-project-386/commit/5cc9fbf62c5baf65f7a387bda39389f1ff64d5c7))
+
+
+### Bug Fixes
+
+* **frontend:** не полагаться на порядок дней в calendarMonthRange ([#31](https://github.com/mmurzin/ai-for-developers-project-386/issues/31)) ([9095f6e](https://github.com/mmurzin/ai-for-developers-project-386/commit/9095f6e76c5b8f5d4ad3e128533a616a1479e95a))
+
 ## [0.3.0](https://github.com/mmurzin/ai-for-developers-project-386/compare/v0.2.0...v0.3.0) (2026-11-09)
 
 
